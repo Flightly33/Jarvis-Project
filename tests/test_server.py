@@ -223,3 +223,12 @@ def test_calendar_events_can_be_added_listed_and_removed(client, core):
     assert [e["title"] for e in listed] == ["Essay due", "Holiday"]
     assert client.delete(f"/api/events/{whole['id']}").json() == {"deleted": True}
     assert client.delete(f"/api/events/{whole['id']}").status_code == 404
+
+
+def test_expired_sign_in_is_recognised():
+    import time
+
+    from jarvis.cli import _expired
+
+    assert _expired(time.time() - 60) and _expired((time.time() - 60) * 1000) and _expired("2020-01-01T00:00:00Z")
+    assert not _expired(time.time() + 3600) and not _expired("2999-01-01T00:00:00+00:00") and not _expired(None) and not _expired("soon")

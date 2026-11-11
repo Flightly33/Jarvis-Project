@@ -119,7 +119,7 @@ class Assistant:
                 store.add_transcript(self.conversation_id, "assistant", result.text)
             bus.emit(
                 "assistant_message", text=result.text, error=result.error, interrupted=result.interrupted,
-                usage=result.usage, source=source,
+                usage=result.usage, source=source, action=result.action,
             )
             return result
 

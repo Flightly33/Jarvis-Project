@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 _SERVER = "jarvis"
 _API_KEY_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 _ERRORS = {
-    "authentication_failed": "Claude Code is not signed in. Run `claude` in a terminal, sign in with your Claude account, then try again.",
+    "authentication_failed": "Your Claude sign-in has expired or is missing. Sign in again with your Claude account, then repeat your request.",
     "billing_error": "Claude reported a billing problem with the account. Nothing was charged by Jarvis; check your Claude plan.",
     "rate_limit": "Your Claude plan's usage limit has been reached. Jarvis will work again when the limit resets.",
     "invalid_request": "Claude rejected the request as invalid. Starting a new conversation usually clears this.",
@@ -219,7 +219,9 @@ class ClaudeCodeBackend(AgentBackend):
                 elif isinstance(message, sdk.AssistantMessage):
                     if message.error:
                         result.error = _ERRORS.get(message.error, f"Claude reported an error: {message.error}.")
-                    if not streamed_this_message and not message.parent_tool_use_id:
+                        if message.error == "authentication_failed":
+                            result.action = "login"
+                    elif not streamed_this_message and not message.parent_tool_use_id:
                         for block in message.content:
                             if isinstance(block, sdk.TextBlock):
                                 emit(block.text)

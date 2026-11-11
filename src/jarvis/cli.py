@@ -74,6 +74,26 @@ class _Lines:
         return await self._queue.get()
 
 
+def _expired(value: object) -> bool:
+    """Whether a sign-in expiry (a timestamp in seconds or milliseconds, or an ISO date) has passed."""
+    import datetime as _dt
+    import time as _time
+
+    try:
+        if isinstance(value, (int, float)):
+            return (value / 1000 if value > 1e11 else value) < _time.time()
+        if isinstance(value, str) and value:
+            if value.replace(".", "", 1).isdigit():
+                return _expired(float(value))
+            when = _dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=_dt.UTC)
+            return when.timestamp() < _time.time()
+    except (ValueError, OverflowError):
+        pass
+    return False
+
+
 def _ensure_signed_in() -> None:
     """On first run, walk the user through signing in to their Claude account."""
     cli = _claude_cli()
@@ -81,7 +101,8 @@ def _ensure_signed_in() -> None:
         return
     try:
         status = subprocess.run([cli, "auth", "status", "--json"], capture_output=True, text=True, timeout=30, check=False)  # noqa: S603
-        if json.loads(status.stdout or "{}").get("loggedIn"):
+        info = json.loads(status.stdout or "{}")
+        if info.get("loggedIn") and not _expired(info.get("loginExpiresAt")):
             return
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return

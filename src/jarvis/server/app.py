@@ -210,6 +210,27 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             await voice.silence()
         return {"stopped": True}
 
+    @app.post("/api/login")
+    async def login() -> dict[str, bool]:
+        """Open the Claude sign-in in the browser and wait for it to finish."""
+        from jarvis.cli import _claude_cli
+
+        cli = _claude_cli()
+        if cli is None:
+            raise HTTPException(409, "The Claude program was not found in this installation.")
+        try:
+            proc = await asyncio.create_subprocess_exec(cli, "auth", "login")     # shares the console window, in case it asks something
+            code = await asyncio.wait_for(proc.wait(), 600)
+        except TimeoutError:
+            proc.kill()
+            raise HTTPException(504, "The sign-in was not completed in time. Please try again.") from None
+        except OSError as exc:
+            raise HTTPException(500, f"Could not start the sign-in: {exc}") from exc
+        if code != 0:
+            raise HTTPException(502, "The sign-in did not complete. Look at the Jarvis console window for details, then try again.")
+        await core.backend.reset()
+        return {"signed_in": True}
+
     @app.post("/api/conversation/new")
     async def new_conversation() -> dict[str, str]:
         await core.assistant.interrupt()

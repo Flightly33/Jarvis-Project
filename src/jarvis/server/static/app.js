@@ -182,6 +182,20 @@ function onReply(event) {
     const failure = addMessage("assistant", "");
     failure.classList.add("error");
     $(".body", failure).textContent = event.error;
+    if (event.action === "login") {
+      const button = el("button", "btn primary small", "Sign in to Claude");
+      button.type = "button";
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        button.textContent = "Waiting for you to sign in in your browser…";
+        try {
+          await api("/api/login", "POST");
+          button.textContent = "Signed in";
+          toast("Signed in. Ask again and Jarvis will answer.", "info");
+        } catch (error) { button.disabled = false; button.textContent = "Sign in to Claude"; toast(error.message, "error", "Sign-in"); }
+      });
+      $(".body", failure).append(document.createElement("br"), button);
+    }
   }
   scrollDown();
 }

@@ -113,6 +113,7 @@ p { margin: 0; }
 .msg.user .body { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 13px; white-space: pre-wrap; }
 .msg .tag { font-size: 10px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 5px; letter-spacing: 0.06em; }
 .msg.error .body { color: var(--red); }
+.msg.error .btn { margin-top: 8px; }
 .body p { margin: 0 0 0.7em; }
 .body p:last-child, .body ul:last-child, .body ol:last-child, .body pre:last-child { margin-bottom: 0; }
 .body ul, .body ol { margin: 0 0 0.7em; padding-left: 1.3em; }

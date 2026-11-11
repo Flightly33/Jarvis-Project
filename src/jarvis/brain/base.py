@@ -27,6 +27,7 @@ class TurnResult:
     text: str = ""
     error: str | None = None          # a failure, phrased for the user
     interrupted: bool = False
+    action: str | None = None         # something the interface can offer to fix the failure, e.g. "login"
     usage: dict[str, Any] = field(default_factory=dict)
 
 
