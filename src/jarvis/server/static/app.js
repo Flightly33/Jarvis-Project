@@ -74,6 +74,7 @@ function handle(event) {
     case "notice": return toast(event.text, event.level, event.level === "warning" ? "Heads up" : "Note");
     case "reminder": toast(event.text, "info", event.late ? "Reminder (missed earlier)" : "Reminder"); return loadReminders();
     case "reminders_changed": return loadReminders();
+    case "calendar_changed": return loadCalendar();
     case "plan": return showPlan(event);
     case "estop": return toast("Everything Jarvis was doing has been stopped.", "warning", "Stopped");
     case "conversation": return divider("New conversation");
@@ -100,6 +101,7 @@ function onHello(snapshot) {
   state.approvals.clear();
   snapshot.approvals.forEach(addApproval);
   renderReminders(snapshot.reminders);
+  loadCalendar();
   refreshStatus();
   scrollDown(true);
 }
@@ -422,6 +424,68 @@ function renderReminders(reminders) {
   $("#reminders").hidden = reminders.length === 0;
 }
 
+// --------------------------------------------------------------- calendar
+
+const pad = (n) => String(n).padStart(2, "0");
+const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const cal = { month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), selected: dayKey(new Date()), events: [] };
+
+async function loadCalendar() {
+  const first = new Date(cal.month);
+  first.setDate(1 - ((first.getDay() + 6) % 7));               // the Monday on or before the 1st
+  const last = new Date(first);
+  last.setDate(first.getDate() + 42);
+  try { cal.events = (await api(`/api/events?start=${first.getTime() / 1000}&end=${last.getTime() / 1000}`)).events; } catch { return; }
+  renderCalendar(first);
+}
+
+function renderCalendar(first) {
+  $("#cal-title").textContent = cal.month.toLocaleDateString([], { month: "long", year: "numeric" });
+  const grid = $("#cal-grid");
+  grid.replaceChildren(...["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => el("div", "dow", d)));
+  const busy = new Set(cal.events.map((e) => dayKey(new Date(e.start * 1000))));
+  const today = dayKey(new Date());
+  for (let i = 0; i < 42; i++) {
+    const day = new Date(first);
+    day.setDate(first.getDate() + i);
+    const key = dayKey(day);
+    const cell = el("button", "", String(day.getDate()));
+    cell.type = "button";
+    if (day.getMonth() !== cal.month.getMonth()) cell.classList.add("other");
+    if (key === today) cell.classList.add("today");
+    if (key === cal.selected) cell.classList.add("selected");
+    if (busy.has(key)) cell.classList.add("has");
+    cell.addEventListener("click", () => { cal.selected = key; renderCalendar(first); });
+    grid.append(cell);
+  }
+  const [y, m, d] = cal.selected.split("-").map(Number);
+  $("#cal-day-title").textContent = new Date(y, m - 1, d).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+  const list = $("#cal-events");
+  list.replaceChildren();
+  const todays = cal.events.filter((e) => dayKey(new Date(e.start * 1000)) === cal.selected);
+  if (!todays.length) list.append(el("li", "none", "Nothing planned."));
+  for (const event of todays) {
+    const item = el("li");
+    const when = event.all_day ? "all day" : new Date(event.start * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const remove = el("button", "link", "Remove");
+    remove.type = "button";
+    remove.addEventListener("click", () => api(`/api/events/${event.id}`, "DELETE").catch((error) => toast(error.message, "error")));
+    item.append(el("time", "", when), el("span", "", event.title), remove);
+    list.append(item);
+  }
+}
+
+function shiftMonth(by) {
+  cal.month = new Date(cal.month.getFullYear(), cal.month.getMonth() + by, 1);
+  loadCalendar();
+}
+
+function tickClock() {
+  const now = new Date();
+  $("#clock-time").textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  $("#clock-date").textContent = now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+}
+
 // --------------------------------------------------------------- settings
 
 async function loadSettings() {
@@ -666,6 +730,22 @@ $("#folder-add").addEventListener("click", async () => {
     fillSettings();
   } catch (error) { showSettingsError(error.message); }
 });
+
+$("#cal-prev").addEventListener("click", () => shiftMonth(-1));
+$("#cal-next").addEventListener("click", () => shiftMonth(1));
+$("#cal-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const title = $("#cal-text").value.trim();
+  if (!title) return;
+  const time = $("#cal-time").value;
+  try {
+    await api("/api/events", "POST", { title, start: time ? `${cal.selected}T${time}` : cal.selected, all_day: !time });
+    $("#cal-text").value = "";
+    $("#cal-time").value = "";
+  } catch (error) { toast(error.message, "error", "Calendar"); }
+});
+tickClock();
+setInterval(tickClock, 15000);
 
 window.addEventListener("resize", sizeOrb);
 sizeOrb();

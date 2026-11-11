@@ -14,6 +14,7 @@
         <span class="mark">J.A.R.V.I.S.</span>
         <span id="conn" class="pill" data-state="connecting">connecting</span>
       </header>
+      <div class="clock"><span id="clock-time"></span><span id="clock-date"></span></div>
 
       <div class="orb-wrap">
         <canvas id="orb" aria-hidden="true"></canvas>
@@ -65,6 +66,22 @@
       <section id="reminders" hidden>
         <h2>Reminders</h2>
         <ul class="list"></ul>
+      </section>
+      <section id="calendar">
+        <h2>Calendar</h2>
+        <div class="cal-head">
+          <button id="cal-prev" class="link" type="button" aria-label="Previous month">&lsaquo;</button>
+          <span id="cal-title"></span>
+          <button id="cal-next" class="link" type="button" aria-label="Next month">&rsaquo;</button>
+        </div>
+        <div id="cal-grid" role="grid"></div>
+        <h3 id="cal-day-title"></h3>
+        <ul id="cal-events" class="list"></ul>
+        <form id="cal-form" autocomplete="off">
+          <input id="cal-text" placeholder="Add an event…" maxlength="200" aria-label="Event title">
+          <input id="cal-time" type="time" aria-label="Time (leave empty for all day)">
+          <button class="btn small" type="submit">Add</button>
+        </form>
       </section>
       <section id="activity">
         <h2>Activity</h2>

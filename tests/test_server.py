@@ -211,3 +211,15 @@ def test_unsafe_service_addresses_are_refused(client):
     assert client.patch("/api/settings", json={"ai_provider": "nonsense"}).status_code == 422
     ok = client.patch("/api/settings", json={"ai_provider": "custom", "ai_base_url": "http://localhost:1234/v1"})
     assert ok.status_code == 200 and ok.json()["ai_provider"] == "custom"
+
+
+def test_calendar_events_can_be_added_listed_and_removed(client, core):
+    made = client.post("/api/events", json={"title": "Essay due", "start": "2026-11-20T09:30"})
+    assert made.status_code == 201 and "09:30" in made.json()["when"]
+    whole = client.post("/api/events", json={"title": "Holiday", "start": "2026-11-21", "all_day": True}).json()
+    assert "all day" in whole["when"]
+    assert client.post("/api/events", json={"title": "Bad", "start": "next tuesday"}).status_code == 422
+    listed = client.get("/api/events", params={"start": made.json()["start"] - 86400, "end": made.json()["start"] + 3 * 86400}).json()["events"]
+    assert [e["title"] for e in listed] == ["Essay due", "Holiday"]
+    assert client.delete(f"/api/events/{whole['id']}").json() == {"deleted": True}
+    assert client.delete(f"/api/events/{whole['id']}").status_code == 404

@@ -63,6 +63,14 @@ class FolderBody(_Body):
     mode: Literal["write", "read"] = "write"
 
 
+class EventBody(_Body):
+    title: str = Field(min_length=1, max_length=200)
+    start: str = Field(max_length=40)
+    end: str | None = Field(default=None, max_length=40)
+    all_day: bool = False
+    notes: str = Field(default="", max_length=1000)
+
+
 class SettingsBody(_Body):
     """The settings the interface may change. Everything else stays in the settings file."""
 
@@ -302,6 +310,29 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             raise HTTPException(422, "At least one folder must stay approved for reading and writing.")
         await core.apply_settings({"safety": {"approved_dirs": approved, "read_only_dirs": read_only}})
         return settings_view()
+
+    @app.get("/api/events")
+    async def list_events(start: float, end: float) -> dict[str, Any]:
+        return {"events": core.store.events(start, end)}
+
+    @app.post("/api/events", status_code=201)
+    async def add_event(body: EventBody) -> dict[str, Any]:
+        from jarvis.tools.base import ToolError
+        from jarvis.tools.calendar import parse_moment
+
+        try:
+            event = core.store.add_event(body.title, parse_moment(body.start), parse_moment(body.end) if body.end else None, body.all_day, body.notes)
+        except (ValueError, ToolError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        core.bus.emit("calendar_changed")
+        return event
+
+    @app.delete("/api/events/{event_id}")
+    async def delete_event(event_id: int) -> dict[str, bool]:
+        if not core.store.delete_event(event_id):
+            raise HTTPException(404, "That event no longer exists.")
+        core.bus.emit("calendar_changed")
+        return {"deleted": True}
 
     @app.get("/api/audit")
     async def audit(limit: int = 100) -> dict[str, Any]:

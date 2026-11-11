@@ -161,6 +161,25 @@ p { margin: 0; }
 #reminders li { font-size: 13px; display: flex; justify-content: space-between; gap: 10px; }
 #reminders time { color: var(--muted); flex: none; }
 
+.clock { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 13px; margin-top: -8px; }
+#clock-time { font: 600 22px var(--mono); color: var(--text); letter-spacing: 0.04em; }
+.cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: 600; }
+.cal-head .link { font-size: 20px; text-decoration: none; padding: 0 8px; }
+#cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 12.5px; }
+#cal-grid .dow { color: var(--faint); font-size: 10.5px; letter-spacing: 0.08em; padding-bottom: 2px; }
+#cal-grid button { position: relative; aspect-ratio: 1; background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; color: var(--text); }
+#cal-grid button:hover { border-color: var(--line-strong); }
+#cal-grid button.other { color: var(--faint); }
+#cal-grid button.today { color: var(--accent); font-weight: 700; }
+#cal-grid button.selected { background: var(--panel-2); border-color: var(--accent); }
+#cal-grid button.has::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--amber); }
+#cal-day-title { margin: 10px 0 6px; font-size: 13px; font-weight: 600; }
+#cal-events li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; font-size: 13px; align-items: baseline; }
+#cal-events time { color: var(--accent); font: 12px var(--mono); }
+#cal-events .none { color: var(--faint); display: block; }
+#cal-form { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; margin-top: 8px; }
+#cal-form input { height: 32px; font-size: 13px; }
+
 /* ---------------------------------------------------------------- dialog */
 dialog { border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel); color: var(--text); padding: 0; width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
 dialog::backdrop { background: rgba(2, 5, 9, 0.7); }

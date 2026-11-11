@@ -33,6 +33,15 @@ CREATE TABLE IF NOT EXISTS reminders (
     fired_at REAL
 );
 CREATE INDEX IF NOT EXISTS reminders_due ON reminders(status, due_at);
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    start REAL NOT NULL,
+    end REAL,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS events_start ON events(start);
 CREATE TABLE IF NOT EXISTS transcript (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id TEXT NOT NULL,
@@ -205,6 +214,33 @@ class Store:
             )
             return cur.rowcount > 0
 
+    # ---------------------------------------------------------------- calendar
+
+    def add_event(self, title: str, start: float, end: float | None = None, all_day: bool = False, notes: str = "") -> dict[str, Any]:
+        title = " ".join(title.split())[:200]
+        if not title:
+            raise ValueError("the event has no title")
+        if end is not None and end < start:
+            raise ValueError("the event ends before it starts")
+        with self._lock:
+            cur = self._db.execute(
+                "INSERT INTO events(title, start, end, all_day, notes) VALUES (?, ?, ?, ?, ?)",
+                (title, start, end, int(all_day), notes.strip()[:1000]),
+            )
+        return {"id": int(cur.lastrowid or 0), "title": title, "start": start, "end": end, "all_day": all_day, "notes": notes.strip()[:1000], "when": _event_when(start, end, all_day)}
+
+    def events(self, start: float, end: float, limit: int = 500) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT id, title, start, end, all_day, notes FROM events WHERE start >= ? AND start < ? ORDER BY start LIMIT ?",
+                (start, end, limit),
+            ).fetchall()
+        return [dict(r) | {"all_day": bool(r["all_day"]), "when": _event_when(r["start"], r["end"], bool(r["all_day"]))} for r in rows]
+
+    def delete_event(self, event_id: int) -> bool:
+        with self._lock:
+            return self._db.execute("DELETE FROM events WHERE id = ?", (event_id,)).rowcount > 0
+
     # -------------------------------------------------------------- transcript
 
     def add_transcript(self, conversation_id: str, role: str, text: str, meta: dict[str, Any] | None = None) -> None:
@@ -277,6 +313,14 @@ class Store:
                 (limit,),
             ).fetchall()
         return [dict(r) | {"ok": bool(r["ok"])} for r in rows]
+
+
+def _event_when(start: float, end: float | None, all_day: bool) -> str:
+    begin = datetime.fromtimestamp(start)
+    if all_day:
+        return begin.strftime("%A %d %B %Y") + " (all day)"
+    text = begin.strftime("%A %d %B %Y, %H:%M")
+    return text + (datetime.fromtimestamp(end).strftime(" to %H:%M") if end else "")
 
 
 def _compact_json(value: dict[str, Any], limit: int = 2000) -> str:

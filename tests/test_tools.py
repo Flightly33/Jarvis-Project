@@ -480,3 +480,17 @@ async def test_request_scoped_approval_covers_later_calls_in_the_same_request(ex
             out = await executor.execute("web_fetch", {"url": f"https://example.com/{i}"}, turn)
             assert not out.is_error
     assert len(asked) == 1
+
+
+async def test_calendar_tools(executor, turn, services):
+    out, data = await call(executor, turn, "add_calendar_event", title="Maths exam", start="2026-12-01T10:00", end="2026-12-01T12:00")
+    assert not out.is_error and "10:00 to 12:00" in data["event"]["when"]
+    out, data = await call(executor, turn, "add_calendar_event", title="Project deadline", start="2026-12-02")
+    assert data["event"]["all_day"] is True
+    out, _ = await call(executor, turn, "add_calendar_event", title="Broken", start="2026-12-01T10:00", end="2026-12-01T09:00")
+    assert out.is_error and "ends before" in out.text
+    _, data = await call(executor, turn, "list_calendar_events", start="2026-12-01", days=3)
+    assert [e["title"] for e in data["events"]] == ["Maths exam", "Project deadline"]
+    async with answering(services, True) as asked:
+        out, _ = await call(executor, turn, "delete_calendar_event", event_id=data["events"][0]["id"])
+    assert not out.is_error and len(asked) == 1
