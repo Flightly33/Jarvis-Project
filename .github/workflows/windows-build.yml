@@ -17,19 +17,30 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
-        run: pip install -e ".[claude,dev]" pyinstaller
-      - name: Windows tests
-        run: python -m pytest tests/test_windows.py -q
+        run: pip install -e ".[claude,voice,dev]" pyinstaller
+      - name: Speech model cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\models
+          key: speech-models-${{ hashFiles('src/jarvis/voice/models.py', 'src/jarvis/config.py') }}
+      - name: Windows tests (including the real speech engines)
+        env:
+          JARVIS_TEST_MODELS: ${{ runner.temp }}\models
+        run: python -m pytest tests/test_windows.py tests/test_voice.py tests/test_server.py -q
       - name: Build application
         run: >
           pyinstaller --noconfirm --clean --name Jarvis --console
-          --collect-all claude_agent_sdk --collect-submodules jarvis --collect-submodules uvicorn
+          --collect-all claude_agent_sdk --collect-all sherpa_onnx --collect-all piper --collect-all sentencepiece
+          --collect-all sounddevice --collect-all _sounddevice_data --collect-all onnxruntime
+          --collect-submodules jarvis --collect-submodules uvicorn
           --add-data "src/jarvis/server/static;jarvis/server/static"
           packaging/jarvis_entry.py
       - name: Self-test the built program
+        env:
+          JARVIS_MODELS_DIR: ${{ runner.temp }}\models
         run: |
           dist\Jarvis\Jarvis.exe --version
-          dist\Jarvis\Jarvis.exe selftest
+          dist\Jarvis\Jarvis.exe selftest --require-voice
       - name: Zip
         run: Compress-Archive -Path dist\Jarvis -DestinationPath dist\Jarvis-windows.zip
       - name: Build installer

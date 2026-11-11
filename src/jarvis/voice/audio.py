@@ -181,7 +181,7 @@ def open_microphone(cfg: VoiceConfig) -> Microphone:
         if command:
             return CommandMicrophone(command)
         raise AudioUnavailable(
-            "No way to record audio was found. Install the audio extra (pip install \"jarvis-assistant[audio]\"; "
+            "No way to record audio was found. Install the voice extra (pip install \"jarvis-assistant[voice]\"; "
             f"on Linux also the system package libportaudio2). Details: {exc}"
         ) from exc
 

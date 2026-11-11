@@ -288,12 +288,48 @@ async def _selftest(args: argparse.Namespace) -> int:
     for name in ("index.html", "app.js", "styles.css"):
         check((STATIC / name).is_file(), f"interface file {name}")
     check(_claude_cli() is not None, "Claude Code program", _claude_cli() or "not found")
-    for module, required in (("sherpa_onnx", False), ("piper", False), ("sounddevice", False), ("sentencepiece", False), ("numpy", False)):
+    voice_ok = True
+    for module in ("numpy", "sherpa_onnx", "sentencepiece", "piper", "sounddevice"):
         try:
             __import__(module)
             check(True, f"voice component {module}")
         except Exception as exc:  # noqa: BLE001 - any import failure is what we are looking for
-            check(False, f"voice component {module}", f"{type(exc).__name__}: {exc}", required)
+            voice_ok = False
+            check(False, f"voice component {module}", f"{type(exc).__name__}: {exc}", args.require_voice)
+    if voice_ok and os.environ.get("JARVIS_MODELS_DIR"):
+        # With speech models at hand, prove the engines really run in this installation:
+        # speak a sentence, then detect the wake word in it and recognise it.
+        try:
+            import numpy as np
+
+            from jarvis.config import Config as _Config
+            from jarvis.voice.engines import Synthesizer, Transcriber, VoiceActivity, WakeDetector
+            from jarvis.voice.models import ModelStore
+
+            store = ModelStore(Path(os.environ["JARVIS_MODELS_DIR"]))
+            stt_key = _Config().voice.stt_model
+            folders = {key: await store.ensure(key) for key in ("kws", "vad", stt_key, "en_GB-alan-medium")}
+            tts = Synthesizer(folders["en_GB-alan-medium"] / "en_GB-alan-medium.onnx")
+            wake = WakeDetector(folders["kws"], "jarvis", "medium")
+            VoiceActivity(folders["vad"] / "silero_vad.onnx")
+            stt = Transcriber(folders[stt_key])
+            woke, text = False, ""
+            for _ in range(4):                       # the synthetic voice varies a little each time
+                pcm, rate = tts.synthesize("Jarvis, what time is it?")
+                samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+                count = int(len(samples) * 16000 / rate)
+                audio = np.interp(np.linspace(0, len(samples) - 1, count), np.arange(len(samples)), samples).astype(np.float32)
+                audio = np.concatenate([audio, np.zeros(16000, dtype=np.float32)])
+                wake.reset()
+                for start in range(0, len(audio), 1600):
+                    woke = wake.feed(audio[start:start + 1600]) or woke
+                text = stt.transcribe(audio)
+                if woke and "time" in text.lower():
+                    break
+            check(woke, "wake word is detected in synthesised speech")
+            check("time" in text.lower(), "speech is recognised", repr(text))
+        except Exception as exc:  # noqa: BLE001
+            check(False, "speech engines", f"{type(exc).__name__}: {exc}")
 
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["JARVIS_HOME"] = tmp
@@ -441,7 +477,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("chat", help="talk to Jarvis in this terminal")
     sub.add_parser("doctor", help="check that everything Jarvis needs is in place")
     sub.add_parser("login", help="sign in to your Claude account (needed once)")
-    sub.add_parser("selftest", help="check that this installation is complete")
+    selftest = sub.add_parser("selftest", help="check that this installation is complete")
+    selftest.add_argument("--require-voice", action="store_true", help="fail if the voice components are missing")
     cfg = sub.add_parser("config", help="show the settings file or where it lives")
     cfg.add_argument("action", choices=["path", "show"], nargs="?", default="path")
     args = parser.parse_args(argv)
