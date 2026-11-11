@@ -7,11 +7,15 @@ import asyncio
 import importlib.util
 import json
 import logging
+import os
+import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
+import webbrowser
 from pathlib import Path
 
 from jarvis import __version__
@@ -180,6 +184,157 @@ async def _chat(args: argparse.Namespace) -> int:
     return code
 
 
+def _free_port(host: str, preferred: int) -> int:
+    """The preferred port if it is free, otherwise the next free one."""
+    for candidate in [*range(preferred, preferred + 20), 0]:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind((host if host != "localhost" else "127.0.0.1", candidate))
+                return probe.getsockname()[1]
+            except OSError:
+                continue
+    raise OSError("no free port found")
+
+
+def _app_browser() -> str | None:
+    """A Chromium-family browser that can show the interface in its own window, if one is installed."""
+    if sys.platform == "win32":
+        roots = [os.environ.get(v) for v in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA")]
+        tails = [r"Microsoft\Edge\Application\msedge.exe", r"Google\Chrome\Application\chrome.exe"]
+        for tail in tails:
+            for root in roots:
+                if root and (Path(root) / tail).exists():
+                    return str(Path(root) / tail)
+        return None
+    for name in ("google-chrome", "chromium", "chromium-browser", "microsoft-edge", "brave-browser"):
+        if shutil.which(name):
+            return shutil.which(name)
+    return None
+
+
+def open_interface(url: str, app_window: bool = True) -> None:
+    browser = _app_browser() if app_window else None
+    try:
+        if browser:
+            subprocess.Popen(  # noqa: S603 - a browser found in its standard install location
+                [browser, f"--app={url}", "--window-size=1320,860"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            return
+    except OSError:
+        pass
+    webbrowser.open(url)
+
+
+async def _run(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from jarvis.core import JarvisCore
+    from jarvis.server import create_app
+
+    try:
+        core = JarvisCore()
+        if core.config.brain.backend == "claude":
+            await asyncio.to_thread(_ensure_signed_in)
+    except (ConfigError, BackendUnavailable) as exc:
+        print(_bad(str(exc)))
+        return 1
+    voice = None
+    if core.config.voice.enabled and not args.no_voice:
+        try:
+            from jarvis.voice import VoiceController
+
+            voice = VoiceController(core)
+        except ImportError as exc:
+            print(_dim(f"Voice is off: {exc}"))
+
+    host = core.config.server.host
+    port = _free_port(host, args.port or core.config.server.port)
+    token = secrets.token_urlsafe(24)
+    app = create_app(core, voice, token=token, port=port)
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False))
+    url = f"http://127.0.0.1:{port}/?token={token}"
+    print(f"{_bold('J.A.R.V.I.S.')} {__version__}  -  {core.backend.label}")
+    print(f"Interface: {url}")
+    print(_dim("Keep this window open while you use Jarvis. Close it (or press Ctrl+C) to quit."), flush=True)
+    if core.config.server.open_browser and not args.no_window:
+        asyncio.get_running_loop().call_later(1.0, open_interface, url, core.config.server.app_window)
+    try:
+        await server.serve()
+    except BackendUnavailable as exc:
+        print(_bad(str(exc)))
+        return 1
+    return 0
+
+
+async def _selftest(args: argparse.Namespace) -> int:
+    """Check that this installation is complete, without using any AI model. Used by the build pipeline."""
+    import tempfile
+
+    import httpx
+    import uvicorn
+
+    failures = 0
+
+    def check(ok: bool, label: str, detail: str = "", required: bool = True) -> None:
+        nonlocal failures
+        if not ok and required:
+            failures += 1
+        mark = _good(" ok ") if ok else _bad("FAIL") if required else _warn("miss")
+        print(f"[{mark}] {label}" + (f"  {detail}" if detail else ""), flush=True)
+
+    from jarvis.server.app import STATIC
+
+    for name in ("index.html", "app.js", "styles.css"):
+        check((STATIC / name).is_file(), f"interface file {name}")
+    check(_claude_cli() is not None, "Claude Code program", _claude_cli() or "not found")
+    for module, required in (("sherpa_onnx", False), ("piper", False), ("sounddevice", False), ("sentencepiece", False), ("numpy", False)):
+        try:
+            __import__(module)
+            check(True, f"voice component {module}")
+        except Exception as exc:  # noqa: BLE001 - any import failure is what we are looking for
+            check(False, f"voice component {module}", f"{type(exc).__name__}: {exc}", required)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["JARVIS_HOME"] = tmp
+        from jarvis.config import Config
+        from jarvis.core import JarvisCore
+        from jarvis.server import create_app
+
+        cfg = Config()
+        cfg.brain.backend = "demo"
+        cfg.voice.enabled = False
+        cfg.safety.approved_dirs = [str(Path(tmp) / "workspace")]
+        core = JarvisCore(config=cfg)
+        port = _free_port("127.0.0.1", 8765)
+        server = uvicorn.Server(uvicorn.Config(create_app(core, None, token="selftest", port=port), host="127.0.0.1", port=port, log_level="error"))
+        task = asyncio.create_task(server.serve())
+        try:
+            for _ in range(100):
+                if server.started:
+                    break
+                await asyncio.sleep(0.05)
+            async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+                check((await client.get("/")).status_code == 401, "interface refuses strangers")
+                check((await client.get("/?token=selftest")).status_code == 303, "interface accepts its own window")
+                page = await client.get("/")
+                check(page.status_code == 200 and "J.A.R.V.I.S." in page.text, "interface page loads")
+                check((await client.get("/static/app.js")).status_code == 200, "interface script loads")
+                await client.post("/api/message", json={"text": "create file selftest.txt saying ok"})
+                for _ in range(100):
+                    if (Path(tmp) / "workspace" / "selftest.txt").exists():
+                        break
+                    await asyncio.sleep(0.05)
+                check((Path(tmp) / "workspace" / "selftest.txt").exists(), "a request runs a tool end to end")
+        except Exception as exc:  # noqa: BLE001
+            check(False, "interface server", f"{type(exc).__name__}: {exc}")
+        finally:
+            server.should_exit = True
+            await task
+    print(_good("Self-test passed.") if not failures else _bad(f"Self-test failed ({failures} problem(s))."))
+    return 1 if failures else 0
+
+
 def _indent(text: str, by: str = "  ") -> str:
     return "\n".join(by + line for line in text.splitlines())
 
@@ -279,9 +434,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"jarvis {__version__}")
     parser.add_argument("--debug", action="store_true", help="print diagnostic logging")
     sub = parser.add_subparsers(dest="command")
+    run = sub.add_parser("run", help="start Jarvis with its interface window (the default)")
+    run.add_argument("--port", type=int, default=0, help="port for the local interface")
+    run.add_argument("--no-window", action="store_true", help="do not open the interface window")
+    run.add_argument("--no-voice", action="store_true", help="start without the microphone and speech")
     sub.add_parser("chat", help="talk to Jarvis in this terminal")
     sub.add_parser("doctor", help="check that everything Jarvis needs is in place")
     sub.add_parser("login", help="sign in to your Claude account (needed once)")
+    sub.add_parser("selftest", help="check that this installation is complete")
     cfg = sub.add_parser("config", help="show the settings file or where it lives")
     cfg.add_argument("action", choices=["path", "show"], nargs="?", default="path")
     args = parser.parse_args(argv)
@@ -291,11 +451,15 @@ def main(argv: list[str] | None = None) -> int:
         return _doctor(args)
     if args.command == "login":
         return _login(args)
+    if args.command == "selftest":
+        return asyncio.run(_selftest(args))
     if args.command == "config":
         return _config(args)
-    if args.command in (None, "chat"):
+    if args.command in (None, "run", "chat"):
+        if args.command is None:
+            args = parser.parse_args([*(argv if argv is not None else sys.argv[1:]), "run"])
         try:
-            code = asyncio.run(_chat(args))
+            code = asyncio.run(_chat(args) if args.command == "chat" else _run(args))
         except KeyboardInterrupt:
             code = 130
         if code and getattr(sys, "frozen", False):

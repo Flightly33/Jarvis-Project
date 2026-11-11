@@ -91,8 +91,10 @@ class JarvisCore:
         self.bus.emit("settings_changed")
 
     async def emergency_stop(self, reason: str = "requested") -> None:
+        self.bus.emit("estop", reason=reason)          # tell the interface at once, then do the stopping
         failed = await self.estop.trigger(reason)
-        self.bus.emit("estop", reason=reason, failed=failed)
+        if failed:
+            self.bus.emit("notice", level="error", text="Some things may not have stopped cleanly: " + ", ".join(failed))
 
     async def close(self) -> None:
         await self.scheduler.stop()

@@ -330,7 +330,7 @@ def _assess_write(a: WriteFileInput, ctx: ToolContext) -> Assessment:
     exists = check.allowed and check.path.exists() and a.overwrite
     base = Assessment(
         risk=Risk.MODIFY if exists else Risk.LOW,
-        title=f"{'Overwrite' if exists else 'Create'} {check.path if check.allowed else a.path}",
+        title=f"{'Overwrite' if exists else 'Create'} {ctx.sandbox.display(check.path) if check.allowed else a.path}",
         detail=f"{len(a.content)} characters\n\n{a.content[:600]}{'...' if len(a.content) > 600 else ''}",
         grant_key="files:write",
     )

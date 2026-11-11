@@ -83,6 +83,18 @@ class PathSandbox:
                 return root
         return self._approved[0] if self._approved else self.home
 
+    def display(self, path: Path | str) -> str:
+        """A path as a person would want to read it: relative to the home folder, middle elided if long."""
+        p = Path(path)
+        try:
+            text = "~/" + p.relative_to(self.home).as_posix()
+        except ValueError:
+            text = str(p)
+        parts = text.replace("\\", "/").split("/")
+        if len(text) > 60 and len(parts) > 4:
+            text = "/".join([*parts[:2], "…", *parts[-2:]])
+        return text
+
     def describe(self) -> str:
         lines = [f"read/write: {p}" for p in self._approved] + [f"read-only: {p}" for p in self._read_only]
         return "\n".join(lines) if lines else "(no folders approved yet)"

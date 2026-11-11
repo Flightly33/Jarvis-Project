@@ -21,12 +21,15 @@ jobs:
       - name: Windows tests
         run: python -m pytest tests/test_windows.py -q
       - name: Build application
-        run: pyinstaller --noconfirm --clean --name Jarvis --console --collect-all claude_agent_sdk --collect-submodules jarvis packaging/jarvis_entry.py
-      - name: Smoke-test the built program
+        run: >
+          pyinstaller --noconfirm --clean --name Jarvis --console
+          --collect-all claude_agent_sdk --collect-submodules jarvis --collect-submodules uvicorn
+          --add-data "src/jarvis/server/static;jarvis/server/static"
+          packaging/jarvis_entry.py
+      - name: Self-test the built program
         run: |
           dist\Jarvis\Jarvis.exe --version
-          dist\Jarvis\Jarvis.exe doctor
-        continue-on-error: true
+          dist\Jarvis\Jarvis.exe selftest
       - name: Zip
         run: Compress-Archive -Path dist\Jarvis -DestinationPath dist\Jarvis-windows.zip
       - name: Build installer

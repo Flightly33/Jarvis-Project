@@ -82,7 +82,12 @@ class PolicyEngine:
         if a.risk >= Risk.HIGH:
             ask = True
         if ask and not reasons:
-            reasons.append(f"This action is rated '{RISK_LABEL[a.risk]}' and your autonomy level is '{self.autonomy}'.")
+            reasons.append({
+                Risk.READ: "Your safety setting asks before this kind of action.",
+                Risk.LOW: f"Your safety setting is '{self.autonomy}', which asks before anything new is created or opened.",
+                Risk.MODIFY: "This changes or removes something that already exists.",
+                Risk.HIGH: "This is hard to undo or reaches beyond the usual limits.",
+            }[a.risk])
 
         if self.exfiltration_guard:
             # Content from the web can contain instructions aimed at the assistant. Once such

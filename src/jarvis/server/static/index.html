@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>J.A.R.V.I.S.</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="core" aria-label="Status and controls">
+      <header class="brand">
+        <span class="mark">J.A.R.V.I.S.</span>
+        <span id="conn" class="pill" data-state="connecting">connecting</span>
+      </header>
+
+      <div class="orb-wrap">
+        <canvas id="orb" aria-hidden="true"></canvas>
+        <p id="state-label" role="status" aria-live="polite">Starting up</p>
+        <p id="state-sub"></p>
+      </div>
+
+      <div class="controls">
+        <button id="mic" class="btn primary" type="button" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 0 0-7 0v5A3.5 3.5 0 0 0 12 15Zm6-3.5a6 6 0 0 1-12 0M12 17.5V21m-3.5 0h7" /></svg>
+          <span id="mic-label">Talk</span>
+        </button>
+        <button id="stop" class="btn danger" type="button" title="Stop everything Jarvis is doing (Esc)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5" /></svg>
+          <span>Stop</span>
+        </button>
+      </div>
+
+      <div class="switches">
+        <label class="switch"><input id="wake-toggle" type="checkbox" disabled><span class="track"></span><span id="wake-text">Wake word</span></label>
+        <button id="pause" class="link" type="button" hidden>Pause microphone</button>
+      </div>
+
+      <footer class="meta">
+        <p id="brain">&nbsp;</p>
+        <div id="plan" hidden><div class="meter"><span id="plan-fill"></span></div><span id="plan-text"></span></div>
+        <div class="row">
+          <button id="new-chat" class="link" type="button">New conversation</button>
+          <button id="open-settings" class="link" type="button">Settings</button>
+        </div>
+      </footer>
+    </aside>
+
+    <main id="talk" aria-label="Conversation">
+      <div id="log" role="log" aria-live="polite"></div>
+      <form id="composer" autocomplete="off">
+        <textarea id="input" rows="1" placeholder="Ask Jarvis to do something…" aria-label="Message"></textarea>
+        <button class="btn primary" type="submit" aria-label="Send">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13m-5-5.5L18.5 12 13 17.5" /></svg>
+        </button>
+      </form>
+    </main>
+
+    <aside id="side" aria-label="Approvals and activity">
+      <section id="approvals" hidden>
+        <h2>Needs your approval</h2>
+        <div class="list"></div>
+      </section>
+      <section id="reminders" hidden>
+        <h2>Reminders</h2>
+        <ul class="list"></ul>
+      </section>
+      <section id="activity">
+        <h2>Activity</h2>
+        <ol class="list"></ol>
+        <p class="empty">What Jarvis does on your computer shows up here.</p>
+      </section>
+    </aside>
+  </div>
+
+  <dialog id="settings">
+    <form method="dialog" id="settings-form">
+      <header><h2>Settings</h2><button class="link" value="cancel" type="submit" aria-label="Close">Close</button></header>
+      <div class="grid">
+        <fieldset>
+          <legend>You</legend>
+          <label>Your name <input name="name" maxlength="60"></label>
+          <label>How Jarvis addresses you <input name="honorific" maxlength="30" placeholder="e.g. sir - leave empty for none"></label>
+        </fieldset>
+        <fieldset>
+          <legend>Thinking</legend>
+          <label>Model
+            <select name="model"><option value="haiku">Haiku - fastest, lightest on your plan</option><option value="sonnet">Sonnet - stronger, uses more of your plan</option><option value="opus">Opus - strongest, uses the most</option></select>
+          </label>
+          <label>Effort
+            <select name="effort"><option value="low">Low - quickest replies</option><option value="medium">Medium</option><option value="high">High - most careful</option></select>
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Safety</legend>
+          <label>How much Jarvis may do without asking
+            <select name="autonomy">
+              <option value="cautious">Cautious - ask before almost everything</option>
+              <option value="balanced">Balanced - ask before changing existing things</option>
+              <option value="trusting">Trusting - ask only for high-risk actions</option>
+            </select>
+          </label>
+          <div class="folders">
+            <span class="label">Folders Jarvis may use</span>
+            <ul id="folder-list"></ul>
+            <div class="add-folder">
+              <input id="folder-path" placeholder="Folder path, e.g. C:\Users\you\Projects">
+              <select id="folder-mode"><option value="write">read and change</option><option value="read">read only</option></select>
+              <button id="folder-add" class="btn" type="button">Add</button>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Voice</legend>
+          <label class="switch"><input name="voice_enabled" type="checkbox"><span class="track"></span><span>Voice on</span></label>
+          <label class="switch"><input name="wake_enabled" type="checkbox"><span class="track"></span><span>Listen for the wake word</span></label>
+          <label>Wake word <input name="wake_word" maxlength="40"></label>
+          <label>Wake word sensitivity
+            <select name="wake_sensitivity"><option value="low">Low - fewer false alarms</option><option value="medium">Medium</option><option value="high">High - easier to trigger</option></select>
+          </label>
+          <label>Keep listening after a reply (seconds, 0 = off) <input name="followup_seconds" type="number" min="0" max="30" step="1"></label>
+          <label>Speaking speed <input name="tts_speed" type="range" min="0.6" max="1.6" step="0.05"></label>
+          <label>Speaking volume <input name="tts_volume" type="range" min="0" max="1.5" step="0.05"></label>
+        </fieldset>
+      </div>
+      <p id="settings-error" class="error" hidden></p>
+      <footer><span id="settings-file" class="hint"></span><button id="settings-save" class="btn primary" type="button">Save</button></footer>
+    </form>
+  </dialog>
+
+  <div id="toasts" aria-live="assertive"></div>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
