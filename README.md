@@ -1,32 +1,29 @@
 # J.A.R.V.I.S.
 
-A personal assistant for your Linux computer: it takes spoken or typed requests, works out the steps,
-carries them out with tools (files, shell commands, applications, web research, reminders, memory),
-checks its own work and reports back — under safety controls that you set.
+A personal assistant for your own computer. You speak or type a request; it works out the steps,
+carries them out with tools (files, commands, applications, web research, reminders, memory), checks
+its own work and tells you what it did — under safety controls that you set.
 
-> **Status: early build.** The assistant core, the safety layer and the terminal chat are working and
-> tested. Voice and the web interface are next. See [What works today](#what-works-today).
+> **Status: preview.** It runs on Windows 11 and Linux. See [What works today](#what-works-today)
+> for exactly what has and has not been tested.
 
-## What works today
+## Install on Windows
 
-| Area | State |
-|---|---|
-| Terminal chat (`jarvis chat`) with streaming replies | Working, tested live |
-| Reasoning on your **Claude plan** (Haiku 5.5 by default, no API key, no extra charges) | Working, tested live |
-| Files: list, find, search, read, write, edit, move, copy, delete (to trash) | Working, tested |
-| Shell commands, including background jobs you can ask about later | Working, tested |
-| Applications: list, open, close; open files and web pages; screenshots | Written and tested with stand-in programs; not yet tried on a real desktop |
-| Web research with sources (Claude's built-in search) | Working, tested live |
-| Reminders and long-term memory | Tools working; spoken reminder announcements arrive with the voice build |
-| Approvals, folder sandbox, command screening, emergency stop, audit log | Working, tested |
-| Wake word, speech recognition, speech output | Engines chosen and verified; not wired in yet |
-| Web interface (status orb, mic button, approval cards) | Not built yet |
-| Free online AI APIs / local models as an alternative brain | Not built yet |
-| Gmail, Calendar, Drive, Outlook, school systems, GitHub | Not built yet |
+1. Download **JarvisSetup.exe** from the
+   [preview release](https://github.com/Flightly33/Jarvis-Project/releases/tag/windows-preview) and run it.
+   Windows may warn that the app is unrecognised (it is not code-signed): choose *More info*, then *Run anyway*.
+2. Start **Jarvis** from the desktop or Start menu. A console window opens (keep it open; closing it quits
+   Jarvis) and then the Jarvis window.
+3. The first time, a Claude sign-in page appears. Use the account that has your Claude plan, not an API key.
+4. The first time voice starts, Jarvis downloads its speech models (about 340 MB, once). The status line
+   under the orb shows progress. You can type in the meantime.
 
-## Install
+To use Jarvis: say **"Jarvis"** followed by your request, press **Talk**, or type. **Stop** (or Esc) halts
+whatever it is doing.
 
-Needs Linux, Python 3.11 or newer, and a Claude subscription (Pro is enough).
+## Install from source (Linux or Windows)
+
+Needs Python 3.11 or newer and a Claude subscription.
 
 ```bash
 git clone https://github.com/Flightly33/Jarvis-Project.git
@@ -49,37 +46,60 @@ python3 -m venv .venv
 ```
 
 ```bash
-pip install -e ".[claude]"
+pip install -e ".[claude,voice]"
 ```
-
-Sign in once with your Claude account (choose the account that has your plan, not an API key):
 
 ```bash
-jarvis login
+jarvis
 ```
 
-Check the setup:
+Other commands: `jarvis chat` (terminal only), `jarvis doctor` (check the setup), `jarvis login`,
+`jarvis selftest`, `jarvis config path`. On Linux, voice works best with the system package
+`libportaudio2`; without it Jarvis records and plays through the desktop's own audio commands.
 
-```bash
-jarvis doctor
-```
+To look around without signing in to anything, set `backend = "demo"` under `[brain]` in the settings
+file: the interface, approvals and voice all work, with canned replies instead of an AI model.
 
-Start talking:
+## What works today
 
-```bash
-jarvis chat
-```
+| Area | State |
+|---|---|
+| Reasoning on your **Claude plan** (Haiku by default; no API key, no extra charges) | Tested live on Linux; not yet run on Windows |
+| Interface: status orb, conversation, activity log, approval cards, settings, Stop | Tested in a real browser on Linux; the packaged Windows app passes an automated self-test |
+| Files, shell commands (PowerShell on Windows), background jobs | Tested on Linux and on a real Windows machine |
+| Wake word, speech recognition, spoken replies, interruption, follow-up listening | Tested end to end on the real speech models with synthetic speech; **not yet tried with a real microphone or speakers** |
+| Applications: list, open, close; open files and web pages; screenshots | Tested with stand-in programs only; not yet tried on a real desktop |
+| Reminders (spoken and shown when due) and long-term memory | Tested |
+| Web research with sources | Tested live |
+| Free online AI APIs or local models as an alternative brain | Not built yet |
+| Gmail, Calendar, Drive, Outlook, school systems, GitHub | Not built yet |
+| Clicking and typing inside other applications' windows | Not built yet |
 
-Things to try:
+## Voice
 
-- `Create a folder called school in my Jarvis folder and put a file todo.md in it with three example tasks.`
-- `What's using the most memory on this computer right now?`
-- `Find the newest file in my Jarvis folder.`
-- `Remind me in two minutes to stretch.` then `What reminders do I have?`
-- `Remember that my game project Beat Wayfarer lives in ~/Projects/BeatWayfarer.` (it will ask for access to that folder when it first needs it)
-- `Research the best ways to speed up an old Linux laptop and give me the three with the least risk, with sources.`
-- `Run git status in my Jarvis folder.` (runs straight away) versus `Run touch test.txt there.` (asks first)
-- Press **Ctrl+C** while it is working: everything it is doing stops.
+Everything about voice runs on your computer; no audio is sent anywhere.
+
+- **Wake word.** "Jarvis" by default; any word or short phrase can be set in Settings. In tests with
+  synthetic voices it was caught 94-100% of the time with no false alarms, but a short name is easier to
+  trigger by accident than a longer phrase. If it wakes too easily, try "Hey Jarvis".
+- **Follow-ups.** After a reply the microphone stays open for a few seconds so you can continue without
+  the wake word. If what it hears is clearly not meant for it, it stays quiet.
+- **Interrupting.** Say the wake word, press Talk or press Stop while it is speaking.
+- **Spoken commands** handled instantly: "stop", "never mind", "stop listening", and "yes" / "no" when an
+  approval is waiting. High-risk approvals need the word "confirm" (or a click) — a casual "yes" is not enough.
+- **Pause microphone** really closes the microphone until you resume it.
+- With open speakers the microphone can hear Jarvis's own voice. That is harmless unless it says its own
+  name; headphones avoid it entirely.
+
+### If voice does not respond
+
+- Look at the line under the orb: it says what voice is doing ("Preparing voice", "Microphone paused")
+  or why it is unavailable.
+- On Windows, check *Settings > Privacy & security > Microphone* and allow desktop apps to use the
+  microphone; also check that the right microphone is the default input device.
+- Press **Talk** and speak: if that works but the wake word does not, raise the wake word sensitivity in
+  Settings or try a longer phrase such as "Hey Jarvis".
+- If it mishears you often, the microphone level or background noise is the usual cause.
 
 ## Billing: what this can and cannot cost you
 
@@ -90,9 +110,9 @@ three safeguards:
 1. It removes any `ANTHROPIC_API_KEY` from its environment, so Claude Code cannot silently switch to
    pay-per-use billing.
 2. It checks how Claude Code authenticated at the start of every conversation and **refuses to run** if
-   an API key is in use (`claude.require_subscription`, on by default).
-3. It warns you if "usage credits" (paid overflow) are switched on for your account. With them off —
-   the default — requests simply stop when you reach your plan's limit and resume when it resets.
+   an API key is in use.
+3. It warns you if "usage credits" (paid overflow) are switched on for your account. With them off,
+   requests simply stop when you reach your plan's limit and resume when it resets.
 
 Two honest caveats: Jarvis shares your plan's limits with everything else you do with Claude, and
 Anthropic has changed its mind about this policy before (a different scheme was announced and then
@@ -102,73 +122,80 @@ paused in June 2026). If the rules change, the reasoning backend is replaceable 
 
 Every action the model proposes passes through one gate before anything happens:
 
-- **Folder sandbox.** File tools only work inside folders you approve (`~/Jarvis` to start with).
-  Paths are resolved before checking, so `..` tricks and symlinks pointing elsewhere are caught. When
-  a request needs another folder, Jarvis asks you, and you decide.
+- **Folder sandbox.** File tools only work inside folders you approve (a `Jarvis` folder in your home
+  folder to start with; add more in Settings, or approve them when Jarvis asks). Paths are resolved
+  before checking, so `..` tricks and links pointing elsewhere are caught.
 - **Risk levels.** Reading is free. Additive, easily undone actions (new file, open an app, set a
   reminder) run on their own. Changes to existing things ask first. High-risk actions — permanent
   deletion, installs, administrator commands, credential files, widening access — always ask.
-- **Autonomy setting** (`safety.autonomy`): `cautious` asks for nearly everything, `balanced` is the
-  default, `trusting` only asks for high-risk actions.
-- **Shell commands.** A short list of read-only commands runs unattended, and only when every file
-  they touch is inside an approved folder. A few catastrophic commands (`rm -rf ~`, disk wipes, fork
-  bombs) are refused outright. Everything else is shown to you first; you can allow a command
-  permanently from the prompt. Pattern-matching on shell text is not a security boundary, which is
-  why "ask" is the default for anything unrecognised.
-- **Reversibility.** Edits and overwrites keep a backup; deletion goes to the trash unless you approve
-  a permanent delete.
-- **Protection against hijacked instructions.** Web pages can contain text aimed at an assistant.
-  Once web content is in a conversation, changes need your confirmation; and if private files have
-  also been read, anything that contacts the internet needs your confirmation too.
-- **Emergency stop.** Ctrl+C in the terminal stops the request, kills the commands it started and
-  declines pending approvals.
+- **Autonomy setting**: *Cautious* asks for nearly everything, *Balanced* is the default, *Trusting*
+  only asks for high-risk actions.
+- **Commands.** A short list of read-only commands runs unattended, and only when every file they touch
+  is inside an approved folder. A few catastrophic commands (wiping a disk, deleting Windows or your home
+  folder) are refused outright. Everything else is shown to you first. Pattern-matching on command text
+  is not a security boundary, which is why "ask" is the default for anything unrecognised.
+- **Reversibility.** Edits and overwrites keep a backup; deletion goes to the trash / Recycle Bin unless
+  you approve a permanent delete.
+- **Protection against hijacked instructions.** Web pages can contain text aimed at an assistant. Once
+  web content is in a conversation, changes need your confirmation; and if private files have also been
+  read, anything that contacts the internet needs your confirmation too.
+- **Emergency stop.** The Stop button, Esc, saying "Jarvis, stop" or Ctrl+C in the console interrupts the
+  request, kills the commands it started, silences speech and declines pending approvals.
+- **A locked-down interface.** The interface listens only on this computer, requires a secret created at
+  start-up, and rejects requests from other websites.
 - **Audit log.** Every tool call, the decision and who made it are recorded locally.
 - **Jarvis cannot reach its own settings or data**, so it cannot loosen its own rules.
 
 ## Settings
 
-`jarvis config path` prints where the settings file lives (normally `~/.config/jarvis/config.toml`).
-The most useful entries:
+Most options are in the Settings panel. The rest are in the settings file (`jarvis config path` prints
+its location: `%APPDATA%\Jarvis\config.toml` on Windows, `~/.config/jarvis/config.toml` on Linux).
 
 ```toml
 [user]
-name = ""              # what Jarvis should call you
-honorific = ""         # e.g. "sir"
+name = ""               # what Jarvis should call you
+honorific = ""          # e.g. "sir"
 
 [claude]
-model = "haiku"        # or "sonnet", "opus"
-effort = "low"         # low is quickest; medium thinks harder
+model = "haiku"         # or "sonnet", "opus"
+effort = "low"
 
 [safety]
 autonomy = "balanced"
 approved_dirs = ["~/Jarvis"]
-read_only_dirs = []
 command_allowlist = []  # e.g. ["npm test", "make"]
+
+[voice]
+wake_word = "jarvis"
+stt_model = "moonshine-base-en"    # "moonshine-tiny-en" is a smaller, slightly less accurate download
+tts_voice = "en_GB-alan-medium"    # or the path to any Piper voice (.onnx)
 ```
 
 ## Development
 
 ```bash
-pip install -e ".[claude,dev]"
+pip install -e ".[claude,voice,dev]"
 ```
 
 ```bash
 pytest
 ```
 
-The test suite exercises the sandbox, the command classifier, the policy and every tool against a
-real temporary filesystem and real child processes. Nothing in it uses your Claude plan.
-
-## Layout
+The tests run the sandbox, command screening, policy, every tool, the interface server and the voice
+loop against a real temporary filesystem and real child processes; nothing in them uses your Claude
+plan. Set `JARVIS_TEST_MODELS` to a folder to also run the round trip on the real speech models. Every
+push builds and tests the Windows app on GitHub and republishes the preview installer.
 
 ```
 src/jarvis/
-  safety/     sandbox, command classifier, policy, approvals, emergency stop
-  tools/      files, shell, apps, system, memory, reminders, web + the executor they all pass through
-  brain/      reasoning backends (Claude Code today)
-  agent.py    conversation manager      persona.py  standing instructions for the model
-  core.py     wiring                    cli.py      terminal interface
+  safety/    sandbox, command screening, policy, approvals, emergency stop
+  tools/     files, shell, apps, system, memory, reminders, web + the executor they all pass through
+  brain/     reasoning backends (Claude Code; a no-model demo)
+  voice/     audio in/out, speech engines, model download, the listening loop
+  server/    local interface server and the web interface
+  agent.py   conversation manager     persona.py   standing instructions for the model
+  core.py    wiring                   cli.py       commands
 ```
 
-Speech synthesis, when added, will use `piper-tts`, which is GPL-3.0 licensed; it stays an optional
-extra and is only loaded when you turn voice on.
+Speech synthesis uses `piper-tts`, which is GPL-3.0 licensed. It is an optional component, loaded only
+when voice is on; if you redistribute a build that includes it, the GPL's terms apply to that build.

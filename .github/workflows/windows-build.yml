@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Only one build publishes the installer at a time; a newer push replaces a build still in progress.
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
