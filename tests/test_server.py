@@ -232,3 +232,10 @@ def test_expired_sign_in_is_recognised():
 
     assert _expired(time.time() - 60) and _expired((time.time() - 60) * 1000) and _expired("2020-01-01T00:00:00Z")
     assert not _expired(time.time() + 3600) and not _expired("2999-01-01T00:00:00+00:00") and not _expired(None) and not _expired("soon")
+
+
+def test_email_settings_keep_the_password_private(client, core):
+    saved = client.patch("/api/settings", json={"email_address": "me@gmail.com", "email_password": "abcd efgh ijkl mnop"}).json()
+    assert saved["email_address"] == "me@gmail.com" and saved["email_connected"] is True and "abcd" not in str(saved)
+    assert "abcdefghijklmnop" in core.paths.secrets_file.read_text() and "abcd" not in core.paths.config_file.read_text()
+    assert core.executor.registry.get("check_email") is not None

@@ -153,6 +153,16 @@
           </div>
         </fieldset>
         <fieldset>
+          <legend>Email</legend>
+          <label>Your email address <input name="email_address" type="email" placeholder="you@gmail.com"></label>
+          <label>App password <input name="email_password" type="password" autocomplete="off"></label>
+          <p class="hint">Not your normal password. For Gmail: turn on 2-Step Verification, then create an app password at
+            <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">myaccount.google.com/apppasswords</a>
+            and paste it here. Jarvis only reads mail; it is stored privately on this computer and can be revoked there at any time.</p>
+          <label>Mail server (leave empty for Gmail, Yahoo, iCloud) <input name="email_host" placeholder="imap.example.com"></label>
+          <button id="email-test" class="btn small" type="button">Save and test email</button>
+        </fieldset>
+        <fieldset>
           <legend>Voice</legend>
           <label class="switch"><input name="voice_enabled" type="checkbox"><span class="track"></span><span>Voice on</span></label>
           <label class="switch"><input name="wake_enabled" type="checkbox"><span class="track"></span><span>Listen for the wake word</span></label>

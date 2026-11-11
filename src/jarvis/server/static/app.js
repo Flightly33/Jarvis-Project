@@ -368,7 +368,7 @@ function refreshStatus() {
     if (voice.state === "loading") { label = "Preparing voice"; sub = voice.detail || "Getting the speech models ready…"; }
     else if (voice.state === "error") sub = voice.detail || "Voice is unavailable. You can still type.";
     else if (voice.state === "paused") sub = "Microphone paused";
-    else if (voice.state === "idle" && voice.wake_enabled) sub = `Say "${capitalise(voice.wake_word || "Jarvis")}" or type below`;
+    else if (voice.state === "idle" && voice.wake_enabled) sub = `Say "${capitalise(voice.wake_word || "Jarvis")}", press Ctrl+Alt+J, or type`;
     else if (voice.state === "idle") sub = "Press Talk or type below";
     else sub = "Type below";
   } else if (current === "listening") sub = voice.detail || "Go ahead";
@@ -523,6 +523,8 @@ function fillSettings() {
   }
   form.elements.brain.value = s.backend === "openai" ? s.ai_provider : s.backend;
   form.elements.ai_key.value = "";
+  form.elements.email_password.value = "";
+  form.elements.email_password.placeholder = s.email_connected ? "A password is saved - leave empty to keep it" : "Paste the app password";
   showBrainFields();
   const list = $("#folder-list");
   list.replaceChildren();
@@ -592,7 +594,8 @@ function showSettingsError(message) {
 async function saveSettings() {
   const form = $("#settings-form");
   const body = {};
-  for (const name of ["name", "honorific", "autonomy", "wake_word", "wake_sensitivity"]) body[name] = form.elements[name].value;
+  for (const name of ["name", "honorific", "autonomy", "wake_word", "wake_sensitivity", "email_address", "email_host"]) body[name] = form.elements[name].value;
+  if (form.elements.email_password.value.trim()) body.email_password = form.elements.email_password.value.trim();
   const choice = form.elements.brain.value;
   if (choice === "claude") { body.model = form.elements.model.value; body.effort = form.elements.effort.value; }
   if (!["claude", "demo"].includes(choice)) {
@@ -734,6 +737,18 @@ $("#open-settings").addEventListener("click", async () => { await loadSettings()
 $("#settings-save").addEventListener("click", saveSettings);
 $("#settings-form").elements.brain.addEventListener("change", showBrainFields);
 $("#ai-list").addEventListener("click", listModels);
+$("#email-test").addEventListener("click", async () => {
+  const form = $("#settings-form");
+  const body = { email_address: form.elements.email_address.value, email_host: form.elements.email_host.value };
+  if (form.elements.email_password.value.trim()) body.email_password = form.elements.email_password.value.trim();
+  try {
+    state.settings = await api("/api/settings", "PATCH", body);
+    form.elements.email_password.value = "";
+    const result = await api("/api/email/test", "POST");
+    showSettingsError("");
+    toast(`Email is connected. ${result.unread} unread message(s).`, "info", "Email");
+  } catch (error) { showSettingsError(error.message); }
+});
 $("#folder-common").addEventListener("click", async () => {
   try { state.settings = await api("/api/folders/common", "POST"); showSettingsError(""); fillSettings(); } catch (error) { showSettingsError(error.message); }
 });

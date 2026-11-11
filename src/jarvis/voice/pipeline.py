@@ -214,6 +214,9 @@ class VoiceController:
         self._speech = SpeechOutput(engines.tts, speaker, self._publish)
         self._tasks.append(asyncio.create_task(self._listen()))
         self._tasks.append(asyncio.create_task(self._watch_events()))
+        from jarvis.voice.hotkey import start_hotkey
+
+        start_hotkey(self._loop, self.push_to_talk)        # Ctrl+Alt+J from any application (Windows)
         self._set("idle")
 
     async def _load_engines(self) -> Engines:

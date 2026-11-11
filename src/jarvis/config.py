@@ -124,6 +124,12 @@ class DesktopConfig(_Section):
     browser_path: str = Field(default="", description="Browser program for Jarvis to drive. Empty uses Microsoft Edge, then Google Chrome.")
 
 
+class EmailConfig(_Section):
+    address: str = ""
+    imap_host: str = Field(default="", description="Mail server. Empty works it out from the address.")
+    imap_port: int = Field(default=993, ge=1, le=65535)
+
+
 class ServerConfig(_Section):
     host: str = "127.0.0.1"
     port: int = Field(default=8765, ge=1, le=65535)
@@ -149,6 +155,7 @@ class Config(_Section):
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     desktop: DesktopConfig = Field(default_factory=DesktopConfig)
+    email: EmailConfig = Field(default_factory=EmailConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
 
 

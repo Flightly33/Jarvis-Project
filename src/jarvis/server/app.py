@@ -93,6 +93,9 @@ class SettingsBody(_Body):
     ai_model: str | None = Field(default=None, max_length=120)
     ai_key: str | None = Field(default=None, max_length=400)          # write-only: never sent back
     ai_vision: bool | None = None
+    email_address: str | None = Field(default=None, max_length=200)
+    email_host: str | None = Field(default=None, max_length=200)
+    email_password: str | None = Field(default=None, max_length=200)      # write-only
 
 
 _SETTING_MAP = {
@@ -172,6 +175,8 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             "ai_provider": next((name for name, p in PRESETS.items() if p["base_url"] == cfg.openai.base_url), "custom"),
             "ai_base_url": cfg.openai.base_url, "ai_model": cfg.openai.model, "ai_vision": cfg.openai.supports_vision,
             "ai_key_saved": bool(cfg.openai.api_key_env and get_secret(core.paths, cfg.openai.api_key_env)),
+            "email_address": cfg.email.address, "email_host": cfg.email.imap_host,
+            "email_connected": bool(cfg.email.address and get_secret(core.paths, "JARVIS_EMAIL_PASSWORD")),
             "ai_presets": {name: {"label": p["label"], "keys_page": p["keys_page"], "needs_key": bool(p["api_key_env"])} for name, p in PRESETS.items()},
         }
 
@@ -277,6 +282,12 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             service["supports_vision"] = body.ai_vision
         if service:
             changes["openai"] = service
+        mail = {k: v.strip() for k, v in (("address", body.email_address), ("imap_host", body.email_host)) if v is not None}
+        if mail:
+            changes["email"] = mail
+        if body.email_password:
+            # app passwords are often shown in groups separated by spaces
+            set_secret(core.paths, "JARVIS_EMAIL_PASSWORD", body.email_password.replace(" ", ""))
         try:
             await core.apply_settings(changes)
             if body.ai_key:
@@ -291,6 +302,16 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
         if voice is not None and "voice" in changes:
             await voice.reconfigure()
         return settings_view()
+
+    @app.post("/api/email/test")
+    async def email_test() -> dict[str, Any]:
+        from jarvis.tools.base import ToolError
+        from jarvis.tools.email import test_connection
+
+        try:
+            return {"unread": await asyncio.to_thread(test_connection, core)}
+        except ToolError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.get("/api/models")
     async def models() -> dict[str, Any]:
