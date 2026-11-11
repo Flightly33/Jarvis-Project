@@ -600,7 +600,7 @@ async function saveSettings() {
   }
   body.backend = ["claude", "demo"].includes(choice) ? choice : "openai";
   for (const name of ["voice_enabled", "wake_enabled"]) body[name] = form.elements[name].checked;
-  for (const name of ["followup_seconds", "tts_speed", "tts_volume"]) body[name] = Number(form.elements[name].value);
+  for (const name of ["followup_seconds", "tts_speed", "tts_volume", "tts_expressiveness"]) body[name] = Number(form.elements[name].value);
   try {
     state.settings = await api("/api/settings", "PATCH", body);
     showSettingsError("");
@@ -734,6 +734,9 @@ $("#open-settings").addEventListener("click", async () => { await loadSettings()
 $("#settings-save").addEventListener("click", saveSettings);
 $("#settings-form").elements.brain.addEventListener("change", showBrainFields);
 $("#ai-list").addEventListener("click", listModels);
+$("#folder-common").addEventListener("click", async () => {
+  try { state.settings = await api("/api/folders/common", "POST"); showSettingsError(""); fillSettings(); } catch (error) { showSettingsError(error.message); }
+});
 $("#folder-add").addEventListener("click", async () => {
   const path = $("#folder-path").value.trim();
   if (!path) return;

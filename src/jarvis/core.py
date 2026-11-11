@@ -124,6 +124,9 @@ class JarvisCore:
 
     async def close(self) -> None:
         await self.scheduler.stop()
+        from jarvis.tools.browser import close_browser
+
+        await close_browser()
         await self.services.jobs.stop_all()
         await self.backend.close()
         self.store.close()

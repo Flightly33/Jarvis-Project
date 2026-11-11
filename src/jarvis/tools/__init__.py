@@ -13,6 +13,7 @@ from jarvis.tools.base import (
     ToolResult,
     TurnState,
 )
+from jarvis.tools.browser import BROWSER_TOOLS
 from jarvis.tools.calendar import CALENDAR_TOOLS
 from jarvis.tools.executor import ToolExecutor, ToolOutcome
 from jarvis.tools.files import FILE_TOOLS
@@ -30,7 +31,7 @@ else:
 
 def build_registry(include_web: bool = False) -> ToolRegistry:
     """The standard tool set. `include_web` adds Jarvis's own web tools for backends without built-in ones."""
-    tools = [*FILE_TOOLS, *SHELL_TOOLS, *APP_TOOLS, *SYSTEM_TOOLS, *MEMORY_TOOLS, *REMINDER_TOOLS, *CALENDAR_TOOLS]
+    tools = [*FILE_TOOLS, *SHELL_TOOLS, *APP_TOOLS, *SYSTEM_TOOLS, *MEMORY_TOOLS, *REMINDER_TOOLS, *CALENDAR_TOOLS, *BROWSER_TOOLS]
     if include_web:
         tools += WEB_TOOLS
     return ToolRegistry(tools)

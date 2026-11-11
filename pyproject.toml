@@ -36,6 +36,8 @@ voice = [
 ]
 # Keyless web search for the OpenAI-compatible backend.
 search = ["ddgs>=9.0"]
+# Driving a browser (uses the Microsoft Edge or Google Chrome already installed).
+browser = ["playwright>=1.45"]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.6"]
 
 [project.scripts]

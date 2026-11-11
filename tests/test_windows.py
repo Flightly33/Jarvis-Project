@@ -107,3 +107,65 @@ async def test_windows_desktop_tools_load(executor, turn):
     assert out.is_error
     out, data = await _call(executor, turn, "system_status")
     assert not out.is_error
+
+
+# ---------------------------------------------------------------- browser
+# Runs wherever a browser is available: the installed Edge on Windows, or one named in JARVIS_TEST_BROWSER.
+
+import functools  # noqa: E402
+import http.server  # noqa: E402
+import os  # noqa: E402
+import threading  # noqa: E402
+
+PAGE = b"""<html><head><title>Inbox</title></head><body><h1>Inbox (2)</h1><p>From Dana: essay feedback</p>
+<a href="/second">Open message</a><input id="q" placeholder="Search mail"><input type="password" placeholder="Password">
+<button onclick="document.title='clicked'">Mark read</button></body></html>"""
+
+
+class _Site(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):  # noqa: N802
+        body = b"<html><title>Message</title><body>Your essay was excellent.</body></html>" if self.path == "/second" else PAGE
+        self.send_response(200)
+        self.send_header("content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.mark.skipif(sys.platform != "win32" and not os.environ.get("JARVIS_TEST_BROWSER"), reason="needs a browser")
+async def test_browser_tools_read_click_and_refuse_passwords(executor, turn, services, monkeypatch):
+    pytest.importorskip("playwright")
+    from jarvis.tools import browser
+
+    monkeypatch.setenv("JARVIS_BROWSER_HEADLESS", "1")
+    services.config.desktop.browser_path = os.environ.get("JARVIS_TEST_BROWSER", "")
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Site)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    try:
+        out = await executor.execute("browser_open", {"url": url}, turn)
+        assert not out.is_error, out.text
+        assert "Inbox (2)" in out.text and "essay feedback" in out.text and "<external_content" in out.text
+        assert turn.flags.tainted and turn.flags.private_read            # a signed-in page is both outside content and private
+        refs = {e["label"]: ref for ref, e in browser._session.elements.items()}
+        assert refs["(password field)"] and "Open message" in refs
+        out = await executor.execute("browser_type", {"ref": refs["(password field)"], "text": "hunter2"}, turn)
+        assert out.is_error and "password" in out.text
+        async with answering(services, False) as asked:                 # clicking changes things: it asks first
+            out = await executor.execute("browser_click", {"ref": refs["Open message"]}, turn)
+        assert out.is_error and len(asked) == 1 and "Click 'Open message'" in asked[0]["title"]
+        async with answering(services, True, "request") as asked:
+            out = await executor.execute("browser_click", {"ref": refs["Open message"]}, turn)
+            assert not out.is_error and "Your essay was excellent." in out.text
+            out = await executor.execute("browser_open", {"url": url}, turn)
+            refs = {e["label"]: ref for ref, e in browser._session.elements.items()}
+            out = await executor.execute("browser_type", {"ref": refs["Search mail"], "text": "essay"}, turn)
+            assert not out.is_error
+        assert len(asked) == 1                                           # one approval covered the rest of the request
+        out = await executor.execute("browser_open", {"url": "file:///etc/passwd"}, turn)
+        assert out.is_error
+    finally:
+        await browser.close_browser()
+        server.shutdown()

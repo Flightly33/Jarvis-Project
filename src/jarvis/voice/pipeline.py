@@ -232,7 +232,7 @@ class VoiceController:
                 wake=WakeDetector(kws, self.cfg.wake_word, self.cfg.wake_sensitivity),
                 vad=VoiceActivity(vad / "silero_vad.onnx", self.cfg.end_silence_seconds),
                 stt=Transcriber(stt),
-                tts=Synthesizer(voice_file, self.cfg.tts_speed, self.cfg.tts_volume),
+                tts=Synthesizer(voice_file, self.cfg.tts_speed, self.cfg.tts_volume, self.cfg.tts_expressiveness),
             )
 
         return await asyncio.to_thread(build)

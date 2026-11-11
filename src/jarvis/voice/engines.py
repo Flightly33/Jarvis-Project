@@ -130,7 +130,9 @@ class Transcriber:
 
 
 class Synthesizer:
-    def __init__(self, model_file: Path, speed: float = 1.0, volume: float = 1.0) -> None:
+    BASE_PACE = 1.12      # the voice's natural pace is a little slow for an assistant; 1.0 in settings maps to this
+
+    def __init__(self, model_file: Path, speed: float = 1.0, volume: float = 1.0, expressiveness: float = 0.9) -> None:
         try:
             from piper import PiperVoice, SynthesisConfig
         except ImportError as exc:
@@ -140,10 +142,15 @@ class Synthesizer:
         self._make_config = SynthesisConfig
         self.speed = speed
         self.volume = volume
+        self.expressiveness = expressiveness
 
     def synthesize(self, text: str) -> tuple[bytes, int]:
         """Return (16-bit mono audio, sample rate) for a piece of text."""
-        settings = self._make_config(length_scale=1.0 / max(0.25, self.speed), volume=self.volume)
+        settings = self._make_config(
+            length_scale=1.0 / max(0.25, self.speed * self.BASE_PACE), volume=self.volume,
+            noise_scale=self.expressiveness,                           # variation in pitch and intonation
+            noise_w_scale=min(1.2, 0.6 + self.expressiveness * 0.35),  # variation in rhythm
+        )
         audio, rate = bytearray(), 22_050
         for chunk in self._voice.synthesize(text, syn_config=settings):
             audio += chunk.audio_int16_bytes

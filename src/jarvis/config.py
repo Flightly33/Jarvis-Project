@@ -99,6 +99,7 @@ class VoiceConfig(_Section):
     tts_voice: str = "en_GB-alan-medium"
     tts_speed: float = Field(default=1.0, ge=0.5, le=2.0)
     tts_volume: float = Field(default=1.0, ge=0.0, le=2.0)
+    tts_expressiveness: float = Field(default=0.9, ge=0.0, le=1.5, description="How much the pitch and rhythm vary. 0 is flat.")
     input_backend: Literal["auto", "sounddevice", "command"] = "auto"
     output_backend: Literal["auto", "sounddevice", "command"] = "auto"
     input_command: str = Field(default="", description="Command that writes 16 kHz mono signed 16-bit PCM to stdout.")
@@ -120,6 +121,7 @@ class DesktopConfig(_Section):
         default="", description="Override the screenshot program, e.g. 'grim {path}'. Empty tries the common ones."
     )
     notifications: bool = Field(default=True, description="Show desktop notifications for reminders and approvals.")
+    browser_path: str = Field(default="", description="Browser program for Jarvis to drive. Empty uses Microsoft Edge, then Google Chrome.")
 
 
 class ServerConfig(_Section):

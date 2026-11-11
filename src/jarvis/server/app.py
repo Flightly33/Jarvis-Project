@@ -86,6 +86,7 @@ class SettingsBody(_Body):
     followup_seconds: float | None = Field(default=None, ge=0, le=30)
     tts_speed: float | None = Field(default=None, ge=0.5, le=2.0)
     tts_volume: float | None = Field(default=None, ge=0.0, le=2.0)
+    tts_expressiveness: float | None = Field(default=None, ge=0.0, le=1.5)
     backend: Literal["claude", "openai", "demo"] | None = None
     ai_provider: str | None = Field(default=None, max_length=30)      # a preset name, or "custom"
     ai_base_url: str | None = Field(default=None, max_length=300)
@@ -99,7 +100,7 @@ _SETTING_MAP = {
     "model": ("claude", "model"), "effort": ("claude", "effort"), "voice_enabled": ("voice", "enabled"),
     "wake_enabled": ("voice", "wake_enabled"), "wake_word": ("voice", "wake_word"),
     "wake_sensitivity": ("voice", "wake_sensitivity"), "followup_seconds": ("voice", "followup_seconds"),
-    "tts_speed": ("voice", "tts_speed"), "tts_volume": ("voice", "tts_volume"),
+    "tts_speed": ("voice", "tts_speed"), "tts_volume": ("voice", "tts_volume"), "tts_expressiveness": ("voice", "tts_expressiveness"),
 }
 
 
@@ -163,7 +164,7 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             "model": cfg.claude.model, "effort": cfg.claude.effort, "backend": cfg.brain.backend,
             "voice_enabled": cfg.voice.enabled, "wake_enabled": cfg.voice.wake_enabled, "wake_word": cfg.voice.wake_word,
             "wake_sensitivity": cfg.voice.wake_sensitivity, "followup_seconds": cfg.voice.followup_seconds,
-            "tts_speed": cfg.voice.tts_speed, "tts_volume": cfg.voice.tts_volume,
+            "tts_speed": cfg.voice.tts_speed, "tts_volume": cfg.voice.tts_volume, "tts_expressiveness": cfg.voice.tts_expressiveness,
             "approved_dirs": [str(p) for p in core.services.sandbox.approved],
             "read_only_dirs": [str(p) for p in core.services.sandbox.read_only],
             "command_allowlist": list(cfg.safety.command_allowlist),
@@ -318,6 +319,20 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
         approved = [d for d in safety.approved_dirs if expand_dirs([d])[0].resolve(strict=False) != path]
         read_only = [d for d in safety.read_only_dirs if expand_dirs([d])[0].resolve(strict=False) != path]
         (approved if body.mode == "write" else read_only).append(entry)
+        await core.apply_settings({"safety": {"approved_dirs": approved, "read_only_dirs": read_only}})
+        return settings_view()
+
+    @app.post("/api/folders/common")
+    async def add_common_folders() -> dict[str, Any]:
+        """Approve the user's everyday folders in one step."""
+        safety = core.config.safety
+        approved = list(safety.approved_dirs)
+        known = {expand_dirs([d])[0].resolve(strict=False) for d in approved}
+        for name in ("Documents", "Desktop", "Downloads", "Pictures", "Music", "Videos"):
+            folder = (Path.home() / name).resolve(strict=False)
+            if folder.is_dir() and folder not in known:
+                approved.append(str(folder))
+        read_only = [d for d in safety.read_only_dirs if expand_dirs([d])[0].resolve(strict=False) not in {Path(a) for a in approved}]
         await core.apply_settings({"safety": {"approved_dirs": approved, "read_only_dirs": read_only}})
         return settings_view()
 

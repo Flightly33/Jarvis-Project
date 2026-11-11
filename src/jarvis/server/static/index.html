@@ -144,6 +144,7 @@
           <div class="folders">
             <span class="label">Folders Jarvis may use</span>
             <ul id="folder-list"></ul>
+            <button id="folder-common" class="btn small" type="button">Add my Documents, Desktop, Downloads and media folders</button>
             <div class="add-folder">
               <input id="folder-path" placeholder="Folder path, e.g. C:\Users\you\Projects">
               <select id="folder-mode"><option value="write">read and change</option><option value="read">read only</option></select>
@@ -161,6 +162,7 @@
           </label>
           <label>Keep listening after a reply (seconds, 0 = off) <input name="followup_seconds" type="number" min="0" max="30" step="1"></label>
           <label>Speaking speed <input name="tts_speed" type="range" min="0.6" max="1.6" step="0.05"></label>
+          <label>Pitch variation <input name="tts_expressiveness" type="range" min="0" max="1.4" step="0.05"></label>
           <label>Speaking volume <input name="tts_volume" type="range" min="0" max="1.5" step="0.05"></label>
         </fieldset>
       </div>
