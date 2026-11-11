@@ -163,6 +163,16 @@
           <button id="email-test" class="btn small" type="button">Save and test email</button>
         </fieldset>
         <fieldset>
+          <legend>Browser extension</legend>
+          <p id="ext-status" class="hint"></p>
+          <p class="hint">Lets Jarvis list, open and read the tabs in your own Chrome or Edge (it cannot click or type there). To install:
+            1. Press the button below to open the extension folder and copy its location.
+            2. In Chrome go to chrome://extensions (Edge: edge://extensions), switch on Developer mode, choose "Load unpacked" and pick that folder.
+            3. Click the Jarvis Bridge icon in the browser toolbar and paste this pairing code.</p>
+          <label>Pairing code <input id="ext-key" readonly></label>
+          <button id="ext-folder" class="btn small" type="button">Open the extension folder</button>
+        </fieldset>
+        <fieldset>
           <legend>Voice</legend>
           <label class="switch"><input name="voice_enabled" type="checkbox"><span class="track"></span><span>Voice on</span></label>
           <label class="switch"><input name="wake_enabled" type="checkbox"><span class="track"></span><span>Listen for the wake word</span></label>

@@ -569,3 +569,35 @@ async def test_email_problems_are_explained(executor, turn, services, mailbox):
     services.config.email.address = ""
     out, _ = await call(executor, turn, "check_email")
     assert out.is_error and "Settings > Email" in out.text
+
+
+async def test_tab_tools_talk_to_the_extension(executor, turn):
+    from jarvis.tools.tabs import bridge
+
+    out, _ = await call(executor, turn, "tabs_list")
+    assert out.is_error and "Settings > Browser extension" in out.text
+
+    class Socket:
+        async def send_json(self, request):
+            answers = {
+                "list_tabs": [{"tab_id": 5, "title": "Inbox (3) - Gmail", "url": "https://mail.google.com/", "active": True}],
+                "read_tab": {"tab_id": 5, "title": "Inbox", "url": "https://mail.google.com/", "text": "Dana: essay feedback"},
+                "open_tab": {"tab_id": 9, "title": "Example", "url": "https://example.com/", "active": False},
+            }
+            ok = request["cmd"] != "read_tab" or request["args"]["tab_id"] != 404
+            asyncio.get_running_loop().call_soon(bridge.receive, {"id": request["id"], "ok": ok, "result": answers[request["cmd"]], "error": "There is no such tab."})
+
+    socket = Socket()
+    bridge.attach(socket)
+    try:
+        out, _ = await call(executor, turn, "tabs_list")
+        assert "Inbox (3) - Gmail" in out.text
+        out, _ = await call(executor, turn, "tab_read", tab_id=5)
+        assert "essay feedback" in out.text and "<external_content" in out.text and turn.flags.tainted and turn.flags.private_read
+        out, _ = await call(executor, turn, "tab_read", tab_id=404)
+        assert out.is_error and "no such tab" in out.text
+        out, _ = await call(executor, turn, "tab_open", url="javascript:alert(1)")
+        assert out.is_error
+    finally:
+        bridge.detach(socket)
+    assert not bridge.connected

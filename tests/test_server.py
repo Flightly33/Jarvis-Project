@@ -239,3 +239,28 @@ def test_email_settings_keep_the_password_private(client, core):
     assert saved["email_address"] == "me@gmail.com" and saved["email_connected"] is True and "abcd" not in str(saved)
     assert "abcdefghijklmnop" in core.paths.secrets_file.read_text() and "abcd" not in core.paths.config_file.read_text()
     assert core.executor.registry.get("check_email") is not None
+
+
+def test_browser_extension_pairs_and_serves_tab_requests(client, core):
+    import json as _json
+
+    from jarvis.server.app import EXTENSION
+    from jarvis.tools.tabs import bridge
+
+    manifest = _json.loads((EXTENSION / "manifest.json").read_text())
+    assert manifest["manifest_version"] == 3 and (EXTENSION / manifest["background"]["service_worker"]).is_file()
+    key = client.get("/api/settings").json()["extension_key"]
+    assert key and key == client.get("/api/settings").json()["extension_key"]          # stable, so pairing survives restarts
+    ext = {"origin": "chrome-extension://abcdefgh"}
+    for bad in (f"/ext?key=wrong", "/ext"):
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            with client.websocket_connect(bad, headers=ext):
+                pass
+    with pytest.raises(Exception):  # noqa: B017, PT011 - an ordinary web page cannot pose as the extension
+        with client.websocket_connect(f"/ext?key={key}", headers={"origin": "https://evil.example"}):
+            pass
+    assert not bridge.connected
+    with client.websocket_connect(f"/ext?key={key}", headers=ext) as ws:
+        ws.send_json({"type": "ping"})
+        assert client.get("/api/settings").json()["extension_connected"] is True
+    assert client.get("/api/settings").json()["extension_connected"] is False

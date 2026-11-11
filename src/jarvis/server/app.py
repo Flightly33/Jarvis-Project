@@ -16,6 +16,8 @@ import asyncio
 import contextlib
 import hmac
 import logging
+import os
+import secrets
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -32,10 +34,12 @@ from jarvis.brain.base import BackendUnavailable
 from jarvis.brain.openai_compat import PRESETS, OpenAICompatBackend, _ApiError
 from jarvis.config import expand_dirs, get_secret, set_secret
 from jarvis.core import JarvisCore
+from jarvis.tools.tabs import bridge
 
 log = logging.getLogger(__name__)
 
 COOKIE = "jarvis_session"
+EXTENSION = Path(__file__).parent.parent / "extension"
 STATIC = Path(__file__).parent / "static"
 _SECURITY_HEADERS = {
     "Cache-Control": "no-store",
@@ -158,6 +162,52 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
         response.headers.update(_SECURITY_HEADERS)
         return response
 
+    def extension_key() -> str:
+        """The pairing code for the browser extension; created once and kept."""
+        key = get_secret(core.paths, "JARVIS_EXTENSION_KEY")
+        if not key:
+            key = secrets.token_urlsafe(24)
+            set_secret(core.paths, "JARVIS_EXTENSION_KEY", key)
+        return key
+
+    @app.websocket("/ext")
+    async def extension(ws: WebSocket) -> None:
+        """The Jarvis Bridge browser extension connects here. It proves itself with the pairing code."""
+        origin = ws.headers.get("origin", "")
+        supplied = ws.query_params.get("key", "")
+        if (
+            ws.headers.get("host", "") not in allowed_hosts
+            or not origin.startswith(("chrome-extension://", "moz-extension://"))
+            or not hmac.compare_digest(supplied.encode(), extension_key().encode())
+        ):
+            await ws.close(code=4403)
+            return
+        await ws.accept()
+        bridge.attach(ws)
+        core.bus.emit("settings_changed")
+        try:
+            while True:
+                message = await ws.receive_json()
+                if isinstance(message, dict) and message.get("id"):
+                    bridge.receive(message)
+        except (WebSocketDisconnect, RuntimeError, ValueError):
+            pass
+        finally:
+            bridge.detach(ws)
+            core.bus.emit("settings_changed")
+
+    @app.post("/api/extension/folder")
+    async def open_extension_folder() -> dict[str, str]:
+        """Show the extension's folder in the file manager, for 'Load unpacked'."""
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(str(EXTENSION))  # noqa: S606
+            else:
+                await asyncio.create_subprocess_exec("xdg-open", str(EXTENSION))
+        except OSError as exc:
+            raise HTTPException(500, f"Could not open the folder: {exc}") from exc
+        return {"folder": str(EXTENSION)}
+
     # ------------------------------------------------------------------ state
 
     def settings_view() -> dict[str, Any]:
@@ -177,6 +227,7 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             "ai_key_saved": bool(cfg.openai.api_key_env and get_secret(core.paths, cfg.openai.api_key_env)),
             "email_address": cfg.email.address, "email_host": cfg.email.imap_host,
             "email_connected": bool(cfg.email.address and get_secret(core.paths, "JARVIS_EMAIL_PASSWORD")),
+            "extension_key": extension_key(), "extension_connected": bridge.connected, "extension_folder": str(EXTENSION),
             "ai_presets": {name: {"label": p["label"], "keys_page": p["keys_page"], "needs_key": bool(p["api_key_env"])} for name, p in PRESETS.items()},
         }
 

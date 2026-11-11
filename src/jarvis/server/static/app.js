@@ -510,6 +510,7 @@ async function loadSettings() {
 async function refreshSettingsQuietly() {
   // The dialog is open: update what we know without overwriting what the user is in the middle of choosing.
   try { state.settings = await api("/api/settings"); } catch { return; }
+  $("#ext-status").textContent = state.settings.extension_connected ? "Connected to your browser." : "Not connected.";
   showBrainFields();
 }
 
@@ -522,6 +523,8 @@ function fillSettings() {
     if (field.type === "checkbox") field.checked = Boolean(value); else field.value = value ?? "";
   }
   form.elements.brain.value = s.backend === "openai" ? s.ai_provider : s.backend;
+  $("#ext-key").value = s.extension_key || "";
+  $("#ext-status").textContent = s.extension_connected ? "Connected to your browser." : "Not connected.";
   form.elements.ai_key.value = "";
   form.elements.email_password.value = "";
   form.elements.email_password.placeholder = s.email_connected ? "A password is saved - leave empty to keep it" : "Paste the app password";
@@ -737,6 +740,7 @@ $("#open-settings").addEventListener("click", async () => { await loadSettings()
 $("#settings-save").addEventListener("click", saveSettings);
 $("#settings-form").elements.brain.addEventListener("change", showBrainFields);
 $("#ai-list").addEventListener("click", listModels);
+$("#ext-folder").addEventListener("click", () => api("/api/extension/folder", "POST").then((r) => toast(r.folder, "info", "Extension folder")).catch((error) => showSettingsError(error.message)));
 $("#email-test").addEventListener("click", async () => {
   const form = $("#settings-form");
   const body = { email_address: form.elements.email_address.value, email_host: form.elements.email_host.value };

@@ -308,6 +308,9 @@ async def _selftest(args: argparse.Namespace) -> int:
 
     for name in ("index.html", "app.js", "styles.css"):
         check((STATIC / name).is_file(), f"interface file {name}")
+    from jarvis.server.app import EXTENSION
+
+    check((EXTENSION / "manifest.json").is_file() and (EXTENSION / "background.js").is_file(), "browser extension files")
     check(_claude_cli() is not None, "Claude Code program", _claude_cli() or "not found")
     voice_ok = True
     for module in ("numpy", "sherpa_onnx", "sentencepiece", "piper", "sounddevice"):
