@@ -12,6 +12,7 @@ import contextlib
 import os
 import re
 import signal
+import subprocess
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -67,8 +68,16 @@ class _Capture:
         return (self.head + self.tail)[-chars:]
 
 
+WINDOWS = os.name == "nt"
+
+
 def _kill_group(proc: asyncio.subprocess.Process, sig: int = signal.SIGTERM) -> None:
     if proc.returncode is not None:
+        return
+    if WINDOWS:
+        # taskkill /T ends the whole process tree, which is what a process group gives us elsewhere
+        with contextlib.suppress(OSError):
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=10, check=False)  # noqa: S603
         return
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, sig)
@@ -80,12 +89,22 @@ async def _terminate(proc: asyncio.subprocess.Process, grace: float = 2.0) -> No
     try:
         await asyncio.wait_for(proc.wait(), grace)
     except TimeoutError:
-        _kill_group(proc, signal.SIGKILL)
+        _kill_group(proc, signal.SIGTERM if WINDOWS else signal.SIGKILL)
         with contextlib.suppress(Exception):
             await asyncio.wait_for(proc.wait(), 2.0)
 
 
 async def _spawn(command: str, cwd: Path) -> asyncio.subprocess.Process:
+    if WINDOWS:
+        return await asyncio.create_subprocess_exec(
+            "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command,
+            cwd=str(cwd),
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=command_env(),
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
+        )
     return await asyncio.create_subprocess_exec(
         "/bin/bash", "-c", command,
         cwd=str(cwd),
@@ -182,7 +201,7 @@ class JobManager:
 
 
 class RunCommandInput(ToolInput):
-    command: str = Field(description="The shell (bash) command line to run.")
+    command: str = Field(description="The command line to run (PowerShell on Windows, bash on Linux).")
     cwd: str = Field(default="", description="Folder to run in. Empty uses the main approved folder.")
     timeout_seconds: int = Field(default=0, ge=0, le=_MAX_TIMEOUT, description="Stop the command after this long. 0 uses the default.")
     background: bool = Field(
@@ -297,7 +316,7 @@ async def _run_stop(a: StopCommandInput, ctx: ToolContext) -> ToolResult:
 SHELL_TOOLS: list[Tool] = [
     Tool(
         "run_command",
-        "Run a shell command on the user's computer and return its output and exit code. Read-only commands inside "
+        f"Run a {'PowerShell' if WINDOWS else 'bash'} command on the user's computer and return its output and exit code. Read-only commands inside "
         "approved folders run immediately; anything else is shown to the user for approval first. Prefer the "
         "dedicated file tools for reading and changing files.",
         RunCommandInput, _run_command, _assess_run, timeout=None, group="shell",

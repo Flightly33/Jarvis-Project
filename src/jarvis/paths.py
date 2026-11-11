@@ -77,6 +77,10 @@ def default_paths() -> AppPaths:
     if home_override:
         base = Path(home_override).expanduser()
         return AppPaths(config_dir=base / "config", data_dir=base / "data")
+    if os.name == "nt":
+        roaming = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+        local = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+        return AppPaths(config_dir=roaming / "Jarvis", data_dir=local / "Jarvis")
     config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
     data_home = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
     return AppPaths(config_dir=config_home / "jarvis", data_dir=data_home / "jarvis")

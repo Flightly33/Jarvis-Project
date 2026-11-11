@@ -1,0 +1,47 @@
+name: Windows build
+
+on:
+  push:
+    branches: ["claude/gifted-bohr-hvwy4i", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[claude,dev]" pyinstaller
+      - name: Windows tests
+        run: python -m pytest tests/test_windows.py -q
+      - name: Build application
+        run: pyinstaller --noconfirm --clean --name Jarvis --console --collect-all claude_agent_sdk --collect-submodules jarvis packaging/jarvis_entry.py
+      - name: Smoke-test the built program
+        run: |
+          dist\Jarvis\Jarvis.exe --version
+          dist\Jarvis\Jarvis.exe doctor
+        continue-on-error: true
+      - name: Zip
+        run: Compress-Archive -Path dist\Jarvis -DestinationPath dist\Jarvis-windows.zip
+      - name: Build installer
+        continue-on-error: true
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\jarvis.iss
+      - name: Publish download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release delete windows-preview --yes --cleanup-tag || true
+          files="dist/Jarvis-windows.zip"
+          [ -f dist/JarvisSetup.exe ] && files="dist/JarvisSetup.exe $files"
+          gh release create windows-preview $files --prerelease --target "$GITHUB_SHA" \
+            --title "Jarvis for Windows (preview)" \
+            --notes "Automatic preview build. Download JarvisSetup.exe and run it, or unzip Jarvis-windows.zip and run Jarvis.exe. Windows may warn that the app is unrecognised because it is not code-signed: choose More info, then Run anyway."

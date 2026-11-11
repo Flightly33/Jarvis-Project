@@ -13,6 +13,7 @@ to ask the user, showing the exact command. The classifier's jobs are:
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 from dataclasses import dataclass, field
@@ -113,6 +114,8 @@ _GIT_WRITE_OPTS = {"--output", "-o", "--ext-diff", "--textconv"}
 
 
 def classify_command(command: str, cwd: Path, sandbox: PathSandbox, allowlist: list[str] | None = None) -> CommandVerdict:
+    if os.name == "nt":
+        return classify_powershell(command, cwd, sandbox, allowlist)
     text = command.strip()
     if not text:
         return CommandVerdict("blocked", Risk.HIGH, ["No command was given."])
@@ -507,3 +510,123 @@ def _git_read_only(args: list[str], cwd: Path, sandbox: PathSandbox) -> bool:
     if sub == "stash":
         return rest[:1] == ["list"] or rest[:1] == ["show"]
     return True
+
+
+# ============================================================== PowerShell
+# The same three jobs for Windows, where commands run through PowerShell.
+
+_PS_SPLIT = re.compile(r"\|\||&&|[;|\n\r]")
+_PS_TOKEN = re.compile(r'"[^"]*"|\'[^\']*\'|\S+')
+_PS_NOT_PLAIN = set("$`;&|<>(){}@*?%\n\r")
+_PS_DELETE = {"remove-item", "rm", "del", "erase", "rd", "rmdir", "ri"}
+_PS_READ_PATHS = {"get-childitem", "dir", "ls", "gci", "get-content", "cat", "type", "gc", "tree", "get-item", "gi", "test-path", "get-filehash"}
+_PS_INFO = {"get-location", "pwd", "gl", "whoami", "get-date", "get-process", "ps", "gps"}
+_PS_BLOCK = re.compile(
+    r"\b(format-volume|clear-disk|initialize-disk|remove-partition|diskpart)\b|\bformat(\.com)?\s+[a-z]:|\bcipher\s+/w|\bvssadmin\s+delete",
+    re.IGNORECASE,
+)
+_PS_NETWORK = re.compile(
+    r"\b(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget|start-bitstransfer|ssh|scp|sftp|ftp|winget|choco|scoop|pip3?|npm|"
+    r"test-netconnection|ping|nslookup)\b|\bgit\s+(push|pull|fetch|clone)\b",
+    re.IGNORECASE,
+)
+_PS_DANGERS: list[tuple[re.Pattern[str], str]] = [(re.compile(p, re.IGNORECASE), why) for p, why in [
+    (r"\b(remove-item|rm|del|erase|rd|rmdir|ri|clear-recyclebin|clear-content)\b", "It deletes files permanently, bypassing the Recycle Bin."),
+    (r"-verb\s+runas|\b(runas|sudo|gsudo)\b", "It runs with administrator rights."),
+    (r"\b(invoke-expression|iex)\b|\s-e(nc|ncodedcommand)?\s|\|\s*(powershell|pwsh|cmd|python|node)\b",
+     "It feeds downloaded, hidden or generated text straight into an interpreter, which runs whatever arrives."),
+    (r"\b(winget|choco|scoop|msiexec)\b|\b(pip3?|npm|yarn|pnpm|cargo|uv)\s+(install|add|uninstall|remove|update|upgrade|i)\b|"
+     r"\b(install|uninstall)-(module|package|script)\b|\badd-appxpackage\b", "It installs or removes software."),
+    (r"\b(set-executionpolicy|set-mppreference|netsh|stop-service|set-service|schtasks|register-scheduledtask|icacls|takeown|bcdedit|"
+     r"new-netfirewallrule|new-itemproperty|remove-itemproperty)\b|\breg(\.exe)?\s+(add|delete|import)\b|\bsc(\.exe)?\s+(stop|delete|config|create)\b|"
+     r"\bnet\s+(user|localgroup)\b|\bset-itemproperty\b.*\bhk|\bdisable-\w+", "It changes security or system settings."),
+    (r"\b(shutdown|restart-computer|stop-computer|logoff)\b", "It shuts down or restarts the computer."),
+    (r"\b(stop-process|taskkill|kill)\b", "It force-kills processes, which can lose unsaved work."),
+    (r"\bgit\s+push\b.*(--force|\s-f\b)|\bgit\s+reset\s+--hard|\bgit\s+clean\s+-\w*f", "It discards work or rewrites Git history."),
+]]
+_PS_CRITICAL_NAMES = re.compile(r"^[a-z]:[\\/](windows|users|program files( \(x86\))?|programdata)$")
+
+
+def _ps_tokens(segment: str) -> list[str]:
+    return [t[1:-1] if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'" else t for t in _PS_TOKEN.findall(segment)]
+
+
+def _ps_critical(arg: str, cwd: Path, sandbox: PathSandbox) -> bool:
+    raw = arg.strip().lower()
+    if raw in {"~", "~\\", "~/", "~\\*", "$home", "$home\\*", "$env:userprofile", "$env:userprofile\\*", "%userprofile%", "\\", "/"}:
+        return True
+    if raw.startswith(("$", "%")):
+        return False
+    stripped = raw.rstrip("*").rstrip("\\/")
+    if not stripped or re.fullmatch(r"[a-z]:", stripped) or _PS_CRITICAL_NAMES.match(stripped):
+        return True
+    try:
+        path = Path(os.path.expanduser(arg.strip().rstrip("*")))
+        if not path.is_absolute():
+            path = cwd / path
+        path = path.resolve(strict=False)
+    except (OSError, RuntimeError):
+        return False
+    return path in (sandbox.home, sandbox.home.parent) or path == Path(path.anchor or "/")
+
+
+def _ps_path_ok(arg: str, access: Access, cwd: Path, sandbox: PathSandbox) -> bool:
+    """Sandbox check for a Windows-style path (also meaningful when the tests run on another system)."""
+    if os.name != "nt":
+        if re.match(r"^[a-zA-Z]:", arg):
+            return False
+        arg = arg.replace("\\", "/")
+    check = sandbox.check(arg, access, cwd)
+    return check.allowed and not check.sensitive
+
+
+def classify_powershell(command: str, cwd: Path, sandbox: PathSandbox, allowlist: list[str] | None = None) -> CommandVerdict:
+    text = command.strip()
+    if not text:
+        return CommandVerdict("blocked", Risk.HIGH, ["No command was given."])
+    external = _PS_NETWORK.search(text) is not None
+    segments = [_ps_tokens(s) for s in _PS_SPLIT.split(text)]
+    segments = [s for s in segments if s]
+
+    if _PS_BLOCK.search(text):
+        return CommandVerdict("blocked", Risk.HIGH, ["Refused: this would erase or repartition a disk."], external)
+    for seg in segments:
+        prog = seg[0].lower().removesuffix(".exe")
+        if prog in _PS_DELETE and any(_ps_critical(a, cwd, sandbox) for a in seg[1:] if not a.startswith(("-", "/"))):
+            return CommandVerdict("blocked", Risk.HIGH, ["Refused: this would delete Windows or your whole user folder."], external)
+
+    plain = not any(ch in _PS_NOT_PLAIN for ch in text)
+    normalized = " ".join(text.split())
+    if plain and any(e and (normalized == e or normalized.startswith(e + " ")) for e in (" ".join(x.split()) for x in allowlist or [])):
+        return CommandVerdict("allowlisted", Risk.LOW, ["You have allowed this command to run without asking."], external)
+
+    dangers = [why for rx, why in _PS_DANGERS if rx.search(text)]
+    for match in re.finditer(r">>?\s*(\"[^\"]+\"|'[^']+'|[^\s;|]+)", text):
+        target = match.group(1).strip("\"'")
+        if not _ps_path_ok(target, Access.WRITE, cwd, sandbox):
+            dangers.append(f"It writes to {target}, which is outside the approved folders or is a sensitive file.")
+    if dangers:
+        return CommandVerdict("dangerous", Risk.HIGH, list(dict.fromkeys(dangers)), external)
+
+    if plain and len(segments) == 1 and sandbox.check(cwd, Access.READ).allowed:
+        prog, args = segments[0][0].lower().removesuffix(".exe"), segments[0][1:]
+        ok = False
+        if prog in _VERSION_PROGS and len(args) == 1 and args[0] in _VERSION_ARGS:
+            ok = True
+        elif prog in _PS_INFO or (prog == "hostname" and not args):
+            ok = True
+        elif prog == "git":
+            ok = _git_read_only(args, cwd, sandbox)
+        elif prog in _PS_READ_PATHS:
+            ok = True
+            for a in args:
+                if a.startswith("-"):
+                    continue
+                if not _ps_path_ok(a, Access.READ, cwd, sandbox):
+                    ok = False
+        if ok:
+            return CommandVerdict("read-only", Risk.READ, [], external)
+    return CommandVerdict(
+        "unclassified", Risk.MODIFY,
+        ["This command is not on the list of known read-only commands, so it runs only with your approval."], external,
+    )

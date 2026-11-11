@@ -11,6 +11,8 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
+from pathlib import Path
 
 from jarvis import __version__
 from jarvis.brain.base import BackendUnavailable
@@ -45,27 +47,43 @@ def _good(t: str) -> str:
 
 
 class _Lines:
-    """Reads lines from the terminal without blocking the event loop (so Ctrl+C and replies stay live)."""
+    """Reads lines from the terminal on a helper thread, so replies and Ctrl+C stay live on every platform."""
 
     def __init__(self) -> None:
         self._queue: asyncio.Queue[str | None] = asyncio.Queue()
-        asyncio.get_running_loop().add_reader(sys.stdin, self._on_readable)
+        self._loop = asyncio.get_running_loop()
+        threading.Thread(target=self._pump, daemon=True, name="jarvis-stdin").start()
 
-    def _on_readable(self) -> None:
-        line = sys.stdin.readline()
-        self._queue.put_nowait(line.rstrip("\n") if line else None)
-        if not line:
-            asyncio.get_running_loop().remove_reader(sys.stdin)
+    def _pump(self) -> None:
+        try:
+            for line in sys.stdin:
+                self._loop.call_soon_threadsafe(self._queue.put_nowait, line.rstrip("\r\n"))
+            self._loop.call_soon_threadsafe(self._queue.put_nowait, None)
+        except (RuntimeError, ValueError, OSError):
+            pass        # the program is shutting down
+
+    def end(self) -> None:
+        self._queue.put_nowait(None)
 
     async def read(self, prompt: str) -> str | None:
         print(prompt, end="", flush=True)
         return await self._queue.get()
 
-    def close(self) -> None:
-        try:
-            asyncio.get_running_loop().remove_reader(sys.stdin)
-        except (ValueError, RuntimeError):
-            pass
+
+def _ensure_signed_in() -> None:
+    """On first run, walk the user through signing in to their Claude account."""
+    cli = _claude_cli()
+    if cli is None:
+        return
+    try:
+        status = subprocess.run([cli, "auth", "status", "--json"], capture_output=True, text=True, timeout=30, check=False)  # noqa: S603
+        if json.loads(status.stdout or "{}").get("loggedIn"):
+            return
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return
+    print("First, sign in with your Claude account (the one with your plan - not an API key).\n")
+    subprocess.call([cli, "auth", "login"])  # noqa: S603
+    print()
 
 
 async def _chat(args: argparse.Namespace) -> int:
@@ -73,6 +91,8 @@ async def _chat(args: argparse.Namespace) -> int:
 
     try:
         core = JarvisCore()
+        if core.config.brain.backend == "claude":
+            await asyncio.to_thread(_ensure_signed_in)
         await core.start()
     except (ConfigError, BackendUnavailable) as exc:
         print(_bad(str(exc)))
@@ -122,11 +142,10 @@ async def _chat(args: argparse.Namespace) -> int:
             print(_warn("\n  Stopping..."), flush=True)
             asyncio.ensure_future(core.emergency_stop("ctrl-c"))  # noqa: RUF006
         else:
-            print()
-            raise KeyboardInterrupt
+            lines.end()         # nothing is running: treat Ctrl+C as "quit"
 
     loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGINT, on_sigint)
+    previous_handler = signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(on_sigint))
     shower = asyncio.create_task(show_events())
 
     print(f"{_bold('J.A.R.V.I.S.')} {__version__}  -  {core.backend.label}")
@@ -156,8 +175,7 @@ async def _chat(args: argparse.Namespace) -> int:
         pass
     finally:
         shower.cancel()
-        lines.close()
-        loop.remove_signal_handler(signal.SIGINT)
+        signal.signal(signal.SIGINT, previous_handler)
         await core.close()
     return code
 
@@ -206,10 +224,13 @@ def _doctor(args: argparse.Namespace) -> int:
     for module, label in (("sherpa_onnx", "speech recognition (sherpa-onnx)"), ("piper", "speech synthesis (piper-tts)")):
         present = importlib.util.find_spec(module) is not None
         line(True if present else None, f"Voice: {label}", "" if present else 'optional: pip install "jarvis-assistant[voice]"')
-    for prog, why in (("xdg-open", "opening files and web pages"), ("notify-send", "desktop notifications")):
-        line(True if shutil.which(prog) else None, f"Desktop helper: {prog}", "" if shutil.which(prog) else f"not found - needed for {why}")
-    shots = [p for p in ("grim", "gnome-screenshot", "spectacle", "scrot", "import") if shutil.which(p)]
-    line(True if shots else None, "Screenshot program", ", ".join(shots) or "none found (install grim, gnome-screenshot, spectacle or scrot)")
+    if sys.platform == "win32":
+        line(bool(shutil.which("powershell.exe")), "PowerShell", "used to run commands")
+    else:
+        for prog, why in (("xdg-open", "opening files and web pages"), ("notify-send", "desktop notifications")):
+            line(True if shutil.which(prog) else None, f"Desktop helper: {prog}", "" if shutil.which(prog) else f"not found - needed for {why}")
+        shots = [p for p in ("grim", "gnome-screenshot", "spectacle", "scrot", "import") if shutil.which(p)]
+        line(True if shots else None, "Screenshot program", ", ".join(shots) or "none found (install grim, gnome-screenshot, spectacle or scrot)")
     print()
     print(_good("Ready.") if ok else _bad("Some checks failed."))
     return 0 if ok else 1
@@ -217,13 +238,15 @@ def _doctor(args: argparse.Namespace) -> int:
 
 def _claude_cli() -> str | None:
     """The Claude Code program: the copy bundled with the Agent SDK, else one on PATH."""
-    spec = importlib.util.find_spec("claude_agent_sdk")
-    if spec and spec.origin:
-        from pathlib import Path
+    try:
+        import claude_agent_sdk
 
-        bundled = Path(spec.origin).parent / "_bundled" / "claude"
-        if bundled.exists():
-            return str(bundled)
+        folder = Path(claude_agent_sdk.__file__).parent / "_bundled"
+        for name in ("claude.exe", "claude"):
+            if (folder / name).exists():
+                return str(folder / name)
+    except ImportError:
+        pass
     return shutil.which("claude")
 
 
@@ -272,9 +295,12 @@ def main(argv: list[str] | None = None) -> int:
         return _config(args)
     if args.command in (None, "chat"):
         try:
-            return asyncio.run(_chat(args))
+            code = asyncio.run(_chat(args))
         except KeyboardInterrupt:
-            return 130
+            code = 130
+        if code and getattr(sys, "frozen", False):
+            input("\nPress Enter to close this window.")     # keep the error readable when started by double-click
+        return code
     parser.print_help()
     return 2
 

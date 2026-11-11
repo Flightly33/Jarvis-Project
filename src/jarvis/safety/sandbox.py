@@ -30,6 +30,10 @@ SENSITIVE_DIRS = (
     ".config/gcloud", ".config/gh", ".config/google-chrome", ".config/chromium", ".config/BraveSoftware",
     ".config/microsoft-edge", ".mozilla", ".thunderbird", ".local/share/keyrings", ".config/Bitwarden",
     ".config/1Password", ".config/op", ".local/share/Trash",
+    # Windows
+    "AppData/Local/Google/Chrome/User Data", "AppData/Local/Microsoft/Edge/User Data", "AppData/Roaming/Mozilla",
+    "AppData/Local/BraveSoftware", "AppData/Local/Microsoft/Credentials", "AppData/Roaming/Microsoft/Credentials",
+    "AppData/Roaming/Microsoft/Protect", "AppData/Local/Microsoft/Vault", "AppData/Roaming/gcloud",
 )
 SENSITIVE_FILE_PATTERNS = (
     ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "*.kdbx", "*.keystore", "*.jks", "*.ovpn",

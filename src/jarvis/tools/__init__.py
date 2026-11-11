@@ -1,6 +1,7 @@
 """Everything Jarvis can do, as tools that the reasoning backends may call."""
 
-from jarvis.tools.apps import APP_TOOLS
+import sys
+
 from jarvis.tools.base import (
     ImagePart,
     Services,
@@ -19,6 +20,11 @@ from jarvis.tools.reminders import REMINDER_TOOLS
 from jarvis.tools.shell import SHELL_TOOLS, JobManager
 from jarvis.tools.system import SYSTEM_TOOLS
 from jarvis.tools.web import WEB_TOOLS
+
+if sys.platform == "win32":
+    from jarvis.tools.apps_windows import APP_TOOLS
+else:
+    from jarvis.tools.apps import APP_TOOLS
 
 
 def build_registry(include_web: bool = False) -> ToolRegistry:
