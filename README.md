@@ -71,7 +71,7 @@ file: the interface, approvals and voice all work, with canned replies instead o
 | Applications: list, open, close; open files and web pages; screenshots | Tested with stand-in programs only; not yet tried on a real desktop |
 | Reminders (spoken and shown when due) and long-term memory | Tested |
 | Web research with sources | Tested live |
-| Free online AI APIs or local models as an alternative brain | Not built yet |
+| A second brain: free online AI services (Groq, Gemini, OpenRouter) or a local model (Ollama), chosen in Settings | Tested against a simulated service; **not yet run against a real provider** |
 | Gmail, Calendar, Drive, Outlook, school systems, GitHub | Not built yet |
 | Clicking and typing inside other applications' windows | Not built yet |
 
@@ -100,6 +100,21 @@ Everything about voice runs on your computer; no audio is sent anywhere.
 - Press **Talk** and speak: if that works but the wake word does not, raise the wake word sensitivity in
   Settings or try a longer phrase such as "Hey Jarvis".
 - If it mishears you often, the microphone level or background noise is the usual cause.
+
+## Using a free AI service instead of (or alongside) your Claude plan
+
+Jarvis shares your Claude plan's limits with everything else you do with Claude. When the plan runs out,
+you can switch Jarvis to another service in **Settings > Thinking**:
+
+1. Choose a service (Groq, Google Gemini, OpenRouter, or Ollama for a model running on your own computer).
+2. Get a free key from that service (the link is shown) and paste it in. It is stored in a private file on
+   this computer, never in the settings file, and never shown again.
+3. Press **Show available models**, pick one that supports "tool use" / "function calling", and save.
+
+Be realistic about this option: free tiers allow only a few requests a minute (a multi-step task can hit
+the limit part-way), smaller models make more mistakes with tools than Claude does, and what you ask -
+including file contents Jarvis reads for you - goes to that company, some of which use it to improve
+their products. Jarvis's safety checks apply identically whichever service is thinking.
 
 ## Billing: what this can and cannot cost you
 
@@ -190,7 +205,7 @@ push builds and tests the Windows app on GitHub and republishes the preview inst
 src/jarvis/
   safety/    sandbox, command screening, policy, approvals, emergency stop
   tools/     files, shell, apps, system, memory, reminders, web + the executor they all pass through
-  brain/     reasoning backends (Claude Code; a no-model demo)
+  brain/     reasoning backends (Claude Code; any OpenAI-compatible service; a no-model demo)
   voice/     audio in/out, speech engines, model download, the listening loop
   server/    local interface server and the web interface
   agent.py   conversation manager     persona.py   standing instructions for the model

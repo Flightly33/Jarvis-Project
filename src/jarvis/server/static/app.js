@@ -78,7 +78,7 @@ function handle(event) {
     case "estop": return toast("Everything Jarvis was doing has been stopped.", "warning", "Stopped");
     case "conversation": return divider("New conversation");
     case "job": if (event.finished) toast(`${event.job.command}: ${event.job.status}`, event.job.status === "finished" ? "info" : "warning", "Background command"); return;
-    case "settings_changed": return loadSettings();
+    case "settings_changed": return $("#settings").open ? refreshSettingsQuietly() : loadSettings();
     case "backend": $("#brain").textContent = event.label; return;
     default: return;
   }
@@ -427,6 +427,12 @@ function renderReminders(reminders) {
 async function loadSettings() {
   try { state.settings = await api("/api/settings"); } catch { return; }
   fillSettings();
+}
+
+async function refreshSettingsQuietly() {
+  // The dialog is open: update what we know without overwriting what the user is in the middle of choosing.
+  try { state.settings = await api("/api/settings"); } catch { return; }
+  showBrainFields();
 }
 
 function fillSettings() {
