@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -194,7 +195,8 @@ def test_switching_to_another_ai_service_from_settings(client, core):
     assert "gsk-secret-value" not in str(saved)                              # the key is never sent back
     assert "gsk-secret-value" not in core.paths.config_file.read_text()      # nor written to the settings file
     assert "gsk-secret-value" in core.paths.secrets_file.read_text()
-    assert oct(core.paths.secrets_file.stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":      # on Windows the file is protected by the user profile's access rules instead
+        assert oct(core.paths.secrets_file.stat().st_mode & 0o777) == "0o600"
     switched = client.patch("/api/settings", json={"backend": "openai", "ai_model": "some-model"}).json()
     assert switched["backend"] == "openai" and core.backend.name == "openai" and core.assistant.backend is core.backend
     assert core.executor.registry.get("web_search") is not None             # this backend uses Jarvis's own web tools

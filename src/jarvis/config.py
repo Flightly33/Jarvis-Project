@@ -216,7 +216,8 @@ def set_secret(paths: AppPaths, name: str, value: str) -> None:
         secrets.pop(name, None)
     paths.config_dir.mkdir(parents=True, exist_ok=True)
     tmp = paths.secrets_file.with_suffix(".toml.tmp")
-    # Create with restrictive permissions before any secret is written to it.
+    # Create with owner-only permissions before any secret is written to it. (Windows ignores these
+    # mode bits; there the file is covered by the access rules of the user's own profile folder.)
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(tomli_w.dumps({"secrets": secrets}))
