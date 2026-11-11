@@ -7,6 +7,7 @@ autonomy level and with what has entered the conversation so far.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from typing import Literal
@@ -46,6 +47,7 @@ class Assessment:
     ingests_untrusted: bool = False     # brings outside content (web pages, mail) into the conversation
     grant_key: str | None = None        # identifies "the same kind of action" for request-scoped approval
     allow_always: bool = False          # offer "always allow" in the approval dialog
+    on_always: Callable[[], None] | None = None   # what "always allow" does (e.g. extend an allowlist)
 
 
 @dataclass

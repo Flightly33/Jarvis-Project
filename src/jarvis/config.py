@@ -115,6 +115,13 @@ class VoiceConfig(_Section):
         return v.lower()
 
 
+class DesktopConfig(_Section):
+    screenshot_command: str = Field(
+        default="", description="Override the screenshot program, e.g. 'grim {path}'. Empty tries the common ones."
+    )
+    notifications: bool = Field(default=True, description="Show desktop notifications for reminders and approvals.")
+
+
 class ServerConfig(_Section):
     host: str = "127.0.0.1"
     port: int = Field(default=8765, ge=1, le=65535)
@@ -138,6 +145,7 @@ class Config(_Section):
     openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    desktop: DesktopConfig = Field(default_factory=DesktopConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
 
 
