@@ -149,6 +149,7 @@ class VoiceController:
         self._chunks: asyncio.Queue[np.ndarray] = asyncio.Queue()
         self._preroll: deque[np.ndarray] = deque(maxlen=int(_PREROLL_SECONDS * 10))
         self._capture: UtteranceCapture | None = None
+        self._heard: list[np.ndarray] | None = None
         self._mode = ""
         self._state = "off"
         self._detail = ""
@@ -329,12 +330,49 @@ class VoiceController:
                     engines.wake.reset()
                     self.core.bus.emit("voice_wake")
                     self._begin("wake", self.cfg.start_timeout_seconds, np.concatenate(list(self._preroll)))
+                elif self.cfg.wake_enabled:
+                    await self._overhear(chunk)
             except Exception:  # noqa: BLE001 - one bad chunk must not end listening for good
                 log.exception("voice loop error")
                 self._capture = None
                 self._publish()
 
+    async def _overhear(self, chunk: np.ndarray) -> None:
+        """Second way of catching the wake word: recognise each thing said and check how it starts.
+
+        The small keyword detector can miss a real voice. Speech recognition is far more tolerant, so
+        while idle every spoken phrase is transcribed (on this computer) and acted on only if it
+        begins with the wake word; everything else is discarded at once.
+        """
+        engines = self._engines
+        speaking = engines.vad.feed(chunk)
+        if speaking:
+            if self._heard is None:
+                self._heard = list(self._preroll)[-4:]         # includes this chunk and a little before it
+            else:
+                self._heard.append(chunk)
+            if len(self._heard) > 150:                         # 15 s of continuous sound is not a request
+                self._heard = None
+                engines.vad.reset()
+            return
+        if self._heard is None:
+            return
+        audio, self._heard = np.concatenate(self._heard), None
+        if self._speech.active:
+            return                                             # that was Jarvis's own voice
+        text = await asyncio.to_thread(engines.stt.transcribe, audio)
+        rest, found = strip_wake_word(text, self.cfg.wake_word)
+        if not found or self._capture is not None:
+            return
+        engines.wake.reset()
+        self.core.bus.emit("voice_wake")
+        if rest:
+            await self._dispatch(rest, "wake")
+        else:
+            self._begin("command", self.cfg.start_timeout_seconds)
+
     def _begin(self, mode: str, start_timeout: float, preroll: np.ndarray | None = None) -> None:
+        self._heard = None
         self._mode = mode
         self._capture = UtteranceCapture(self._engines.vad, start_timeout, self.cfg.max_utterance_seconds, preroll)
         self._detail = {"followup": "Still listening", "approval": "Say yes or no"}.get(mode, "Go ahead")

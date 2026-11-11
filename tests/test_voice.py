@@ -233,6 +233,13 @@ async def test_ordinary_talk_without_the_wake_word_is_ignored(rig):
     assert kinds(rig, "user_message") == [] and rig.voice.snapshot()["state"] == "idle"
 
 
+async def test_wake_word_is_caught_by_recognition_when_the_detector_misses_it(rig):
+    rig.stt.script.append("Jervis, list files")              # the keyword detector never fires on SPEECH chunks
+    rig.mic.push(SILENCE, SPEECH, SPEECH, SILENCE)
+    await until(lambda: kinds(rig, "user_message"))
+    assert kinds(rig, "user_message")[0]["text"] == "list files" and kinds(rig, "voice_wake")
+
+
 async def test_approval_can_be_declined_by_voice(rig):
     (rig.workspace / "old.txt").write_text("x")
     rig.stt.script.extend(["Jarvis, delete old.txt", "No."])
