@@ -52,15 +52,29 @@ jobs:
         continue-on-error: true
         run: |
           choco install innosetup -y --no-progress
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\jarvis.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Q packaging\jarvis.iss
       - name: Publish download
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release delete windows-preview --yes --cleanup-tag || true
           files="dist/Jarvis-windows.zip"
           [ -f dist/JarvisSetup.exe ] && files="dist/JarvisSetup.exe $files"
-          gh release create windows-preview $files --prerelease --target "$GITHUB_SHA" \
-            --title "Jarvis for Windows (preview)" \
-            --notes "Automatic preview build. Download JarvisSetup.exe and run it, or unzip Jarvis-windows.zip and run Jarvis.exe. Windows may warn that the app is unrecognised because it is not code-signed: choose More info, then Run anyway."
+          title="Jarvis for Windows (preview)"
+          notes="Automatic preview build. Download JarvisSetup.exe and run it, or unzip Jarvis-windows.zip and run Jarvis.exe. Windows may warn that the app is unrecognised because it is not code-signed: choose More info, then Run anyway."
+          # Replace the files on the existing release rather than deleting and recreating it,
+          # so the download page is never left empty if a step fails.
+          publish() {
+            if gh release view windows-preview >/dev/null 2>&1; then
+              gh release upload windows-preview $files --clobber &&
+              gh release edit windows-preview --title "$title" --notes "$notes" --prerelease
+            else
+              gh release create windows-preview $files --prerelease --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+            fi
+          }
+          for attempt in 1 2 3; do
+            if publish; then exit 0; fi
+            echo "publish attempt $attempt failed; retrying"
+            sleep 20
+          done
+          exit 1
