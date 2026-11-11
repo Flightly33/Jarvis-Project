@@ -1,6 +1,6 @@
 """A browser Jarvis can drive: open pages, read them, click and type.
 
-It is a separate browser window with its own profile kept in Jarvis's data
+It is a separate browser window whose sign-ins are kept in Jarvis's data
 folder. The user signs in to sites there themselves (Jarvis never types into
 password fields), and Jarvis can then work with those sites, webmail included.
 
@@ -45,11 +45,13 @@ _SNAPSHOT = """
 
 
 class BrowserSession:
-    """One long-lived browser window with a persistent profile."""
+    """One long-lived browser window. Sign-ins survive restarts through a saved state file."""
 
     def __init__(self) -> None:
         self._playwright: Any = None
+        self._browser: Any = None
         self._context: Any = None
+        self._state_file: Any = None
         self._lock = asyncio.Lock()
         self.elements: dict[int, dict[str, Any]] = {}
         self.url = ""
@@ -66,8 +68,8 @@ class BrowserSession:
             from playwright.async_api import async_playwright
         except ImportError as exc:
             raise ToolError("Browser control is not installed in this copy of Jarvis.") from exc
-        profile = ctx.services.paths.data_dir / "browser-profile"
-        profile.mkdir(parents=True, exist_ok=True)
+        # Cookies and site storage live here, inside Jarvis's own data folder (which its file tools cannot reach).
+        self._state_file = ctx.services.paths.data_dir / "browser-state.json"
         headless = os.environ.get("JARVIS_BROWSER_HEADLESS") == "1"
         custom = ctx.config.desktop.browser_path
         attempts: list[dict[str, Any]] = [{"executable_path": custom}] if custom else [{"channel": "msedge"}, {"channel": "chrome"}, {}]
@@ -75,13 +77,14 @@ class BrowserSession:
         errors = []
         for extra in attempts:
             try:
-                self._context = await asyncio.wait_for(
-                    self._playwright.chromium.launch_persistent_context(
-                        str(profile), headless=headless, no_viewport=not headless, timeout=25_000, **extra,
-                    ),
-                    30,
-                )
-                self._context.on("close", lambda *_: setattr(self, "_context", None))
+                browser = await asyncio.wait_for(self._playwright.chromium.launch(headless=headless, timeout=25_000, **extra), 30)
+                saved = str(self._state_file) if self._state_file.is_file() else None
+                try:
+                    context = await browser.new_context(storage_state=saved, no_viewport=not headless)
+                except Exception:  # noqa: BLE001 - an unreadable state file must not block browsing
+                    context = await browser.new_context(no_viewport=not headless)
+                browser.on("disconnected", lambda *_: self._forget())      # the user closed the window
+                self._browser, self._context = browser, context
                 return
             except Exception as exc:  # noqa: BLE001 - try the next installed browser
                 name = extra.get("channel") or extra.get("executable_path") or "built-in browser"
@@ -91,13 +94,25 @@ class BrowserSession:
         self._playwright = None
         raise ToolError("No browser could be started (Microsoft Edge or Google Chrome is needed). " + " | ".join(errors))
 
+    def _forget(self) -> None:
+        self._browser = self._context = None
+
+    async def save(self) -> None:
+        """Remember sign-ins for next time."""
+        if self._context is not None and self._state_file is not None:
+            try:
+                await asyncio.wait_for(self._context.storage_state(path=str(self._state_file)), 10)
+            except Exception:  # noqa: BLE001, S110 - best effort
+                pass
+
     async def close(self) -> None:
-        context, playwright = self._context, self._playwright
-        self._context = self._playwright = None
-        for closer in (getattr(context, "close", None), getattr(playwright, "stop", None)):
+        await self.save()
+        context, browser, playwright = self._context, self._browser, self._playwright
+        self._context = self._browser = self._playwright = None
+        for closer in (getattr(context, "close", None), getattr(browser, "close", None), getattr(playwright, "stop", None)):
             if closer:
                 try:
-                    await closer()
+                    await asyncio.wait_for(closer(), 10)
                 except Exception:  # noqa: BLE001, S110 - shutting down
                     pass
 
@@ -119,6 +134,7 @@ async def _snapshot(page: Any, limit: int) -> ToolResult:
         data = await asyncio.wait_for(page.evaluate(_SNAPSHOT, limit), 20)
     except TimeoutError:
         raise ToolError("The page did not respond when Jarvis tried to read it.") from None
+    await _session.save()
     _session.elements = {e["ref"]: e for e in data["elements"]}
     _session.url = data["url"]
     lines = [f"Page: {data['title']}", f"Address: {data['url']}", "", data["text"].strip(), "", "Things that can be clicked or typed into (use the number as ref):"]
