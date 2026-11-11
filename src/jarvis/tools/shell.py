@@ -21,7 +21,7 @@ from pydantic import Field
 
 from jarvis.events import EventBus
 from jarvis.safety import Access, Assessment, Risk, classify_command
-from jarvis.tools.base import Tool, ToolContext, ToolError, ToolInput, ToolResult
+from jarvis.tools.base import Tool, ToolContext, ToolError, ToolInput, ToolResult, Trimmed
 
 _SECRET_ENV = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|COOKIE)", re.IGNORECASE)
 _HEAD_CHARS = 6_000
@@ -263,7 +263,7 @@ async def _run_command(a: RunCommandInput, ctx: ToolContext) -> ToolResult:
 
 
 class CommandStatusInput(ToolInput):
-    job_id: str = Field(default="", description="Id returned by run_command with background=true. Empty lists every job.")
+    job_id: Trimmed = Field(default="", description="Id returned by run_command with background=true. Empty lists every job.")
 
 
 async def _run_status(a: CommandStatusInput, ctx: ToolContext) -> ToolResult:
@@ -280,7 +280,7 @@ async def _run_status(a: CommandStatusInput, ctx: ToolContext) -> ToolResult:
 
 
 class StopCommandInput(ToolInput):
-    job_id: str
+    job_id: Trimmed
 
 
 def _assess_stop(a: StopCommandInput, ctx: ToolContext) -> Assessment:

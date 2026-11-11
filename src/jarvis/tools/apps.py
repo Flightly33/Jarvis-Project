@@ -22,7 +22,7 @@ import psutil
 from pydantic import Field
 
 from jarvis.safety import Access, Assessment, Risk
-from jarvis.tools.base import ImagePart, Tool, ToolContext, ToolError, ToolInput, ToolResult
+from jarvis.tools.base import ImagePart, Tool, ToolContext, ToolError, ToolInput, ToolResult, Trimmed
 from jarvis.tools.shell import command_env
 
 _FIELD_CODES = {"%f", "%F", "%u", "%U", "%i", "%c", "%k", "%d", "%D", "%n", "%N", "%v", "%m"}
@@ -263,16 +263,25 @@ class CloseApplicationInput(ToolInput):
     force: bool = Field(default=False, description="Kill it if it does not close when asked. Unsaved work is lost.")
 
 
+def _closing_target(name: str) -> tuple[str, str]:
+    """(display label, process name) for an application the user wants closed."""
+    matches = find_app(name)
+    if matches:
+        return matches[0].name, matches[0].binary
+    return name, (name.strip().split() or [""])[0]
+
+
 def _assess_close_app(a: CloseApplicationInput, ctx: ToolContext) -> Assessment:
+    _, binary = _closing_target(a.name)
+    if not binary or not _processes_for(binary):
+        return Assessment(title=f"Close {a.name}")      # nothing is running, so there is nothing to confirm
     if a.force:
         return Assessment(risk=Risk.HIGH, title=f"Force-close {a.name}", reasons=["Force-closing discards unsaved work."])
     return Assessment(risk=Risk.MODIFY, title=f"Close {a.name}", detail="The application is asked to quit; unsaved work may be lost.", grant_key="apps:close")
 
 
 async def _run_close_app(a: CloseApplicationInput, ctx: ToolContext) -> ToolResult:
-    matches = find_app(a.name)
-    binary = matches[0].binary if matches else a.name.strip().split()[0]
-    label = matches[0].name if matches else a.name
+    label, binary = _closing_target(a.name)
     if binary.lower() in _NEVER_CLOSE:
         raise ToolError(f"{label} is part of the desktop session itself and will not be closed.")
     own = {os.getpid(), os.getppid()}
@@ -329,7 +338,7 @@ async def _run_open_path(a: OpenPathInput, ctx: ToolContext) -> ToolResult:
 
 
 class OpenUrlInput(ToolInput):
-    url: str = Field(description="An http or https address. To search in the browser, build a search-engine address with the query.")
+    url: Trimmed = Field(description="An http or https address. To search in the browser, build a search-engine address with the query.")
 
 
 def _assess_open_url(a: OpenUrlInput, ctx: ToolContext) -> Assessment:

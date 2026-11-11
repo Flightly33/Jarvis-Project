@@ -11,24 +11,38 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from jarvis.config import Config, expand_dirs
 from jarvis.events import EventBus
 from jarvis.memory import Store
 from jarvis.paths import AppPaths
-from jarvis.safety import ApprovalBroker, Assessment, ConversationFlags, EmergencyStop, PathSandbox, PolicyEngine
+from jarvis.safety import (
+    ApprovalBroker,
+    Assessment,
+    ConversationFlags,
+    EmergencyStop,
+    PathSandbox,
+    PolicyEngine,
+)
 
 if TYPE_CHECKING:
     from jarvis.tools.shell import JobManager
 
 
 class ToolInput(BaseModel):
-    """Base class for tool arguments: unknown fields are rejected, strings are trimmed."""
+    """Base class for tool arguments. Unknown fields are rejected.
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    Strings are deliberately *not* trimmed here: file contents and exact-match
+    edits must arrive byte for byte. Fields that are identifiers use `Trimmed`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+Trimmed = Annotated[str, StringConstraints(strip_whitespace=True)]
 
 
 class ToolError(Exception):

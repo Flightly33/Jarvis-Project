@@ -320,7 +320,9 @@ class WriteFileInput(ToolInput):
 
 def _assess_write(a: WriteFileInput, ctx: ToolContext) -> Assessment:
     check = ctx.sandbox.check(a.path, Access.WRITE)
-    exists = check.allowed and check.path.exists()
+    # Without overwrite=true an existing file is left alone (the call fails), so only a real
+    # replacement counts as a change the user may need to confirm.
+    exists = check.allowed and check.path.exists() and a.overwrite
     base = Assessment(
         risk=Risk.MODIFY if exists else Risk.LOW,
         title=f"{'Overwrite' if exists else 'Create'} {check.path if check.allowed else a.path}",
