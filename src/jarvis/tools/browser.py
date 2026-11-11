@@ -75,13 +75,18 @@ class BrowserSession:
         errors = []
         for extra in attempts:
             try:
-                self._context = await self._playwright.chromium.launch_persistent_context(
-                    str(profile), headless=headless, no_viewport=not headless, **extra,
+                self._context = await asyncio.wait_for(
+                    self._playwright.chromium.launch_persistent_context(
+                        str(profile), headless=headless, no_viewport=not headless, timeout=25_000, **extra,
+                    ),
+                    30,
                 )
                 self._context.on("close", lambda *_: setattr(self, "_context", None))
                 return
             except Exception as exc:  # noqa: BLE001 - try the next installed browser
-                errors.append(str(exc).splitlines()[0][:160])
+                name = extra.get("channel") or extra.get("executable_path") or "built-in browser"
+                detail = str(exc).splitlines()[0][:160] if str(exc) else "did not start within 30 seconds"
+                errors.append(f"{name}: {detail}")
         await self._playwright.stop()
         self._playwright = None
         raise ToolError("No browser could be started (Microsoft Edge or Google Chrome is needed). " + " | ".join(errors))
@@ -110,7 +115,10 @@ async def _snapshot(page: Any, limit: int) -> ToolResult:
     except Exception:  # noqa: BLE001, S110 - a slow page is still readable
         pass
     await asyncio.sleep(0.6)       # let scripts fill the page in
-    data = await page.evaluate(_SNAPSHOT, limit)
+    try:
+        data = await asyncio.wait_for(page.evaluate(_SNAPSHOT, limit), 20)
+    except TimeoutError:
+        raise ToolError("The page did not respond when Jarvis tried to read it.") from None
     _session.elements = {e["ref"]: e for e in data["elements"]}
     _session.url = data["url"]
     lines = [f"Page: {data['title']}", f"Address: {data['url']}", "", data["text"].strip(), "", "Things that can be clicked or typed into (use the number as ref):"]
@@ -138,10 +146,16 @@ def _assess_open(a: BrowserOpenInput, ctx: ToolContext) -> Assessment:
 async def _run_open(a: BrowserOpenInput, ctx: ToolContext) -> ToolResult:
     page = await _session.page(ctx)
     try:
-        await page.goto(a.url, wait_until="domcontentloaded", timeout=45_000)
-        await page.bring_to_front()
+        await asyncio.wait_for(page.goto(a.url, wait_until="domcontentloaded", timeout=40_000), 45)
+    except TimeoutError:
+        raise ToolError("The page took longer than 45 seconds to load.") from None
     except Exception as exc:  # noqa: BLE001
         raise ToolError(f"The page could not be opened: {str(exc).splitlines()[0][:200]}") from exc
+    if os.environ.get("JARVIS_BROWSER_HEADLESS") != "1":
+        try:
+            await asyncio.wait_for(page.bring_to_front(), 5)
+        except Exception:  # noqa: BLE001, S110 - showing the window is a nicety
+            pass
     return await _snapshot(page, a.max_chars)
 
 
@@ -221,7 +235,7 @@ BROWSER_TOOLS: list[Tool] = [
         "Open a web address in Jarvis's own browser window and read the page. Use this (not open_url) when you need to "
         "read or operate a site yourself, including sites the user is signed in to such as webmail. If a site asks "
         "for a sign-in, tell the user to sign in themselves in that window; never ask for or type a password.",
-        BrowserOpenInput, _run_open, _assess_open, timeout=90, group="browser",
+        BrowserOpenInput, _run_open, _assess_open, timeout=200, group="browser",
     ),
     Tool("browser_read", "Read the page currently shown in Jarvis's browser: its text and the numbered things that can be clicked or typed into.", BrowserReadInput, _run_read, _assess_read, timeout=60, group="browser"),
     Tool("browser_click", "Click a numbered element on the page in Jarvis's browser, then read the resulting page.", BrowserClickInput, _run_click, _assess_click, timeout=60, group="browser"),
