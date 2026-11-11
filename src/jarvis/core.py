@@ -57,6 +57,10 @@ class JarvisCore:
             from jarvis.brain.claude_code import ClaudeCodeBackend
 
             return ClaudeCodeBackend(self.services, self.executor, self._system_prompt)
+        if name == "openai":
+            from jarvis.brain.openai_compat import OpenAICompatBackend
+
+            return OpenAICompatBackend(self.services, self.executor, self._system_prompt)
         if name == "demo":
             from jarvis.brain.demo import DemoBackend
 
@@ -74,6 +78,28 @@ class JarvisCore:
         await self.backend.start()
         self.scheduler.start()
 
+    async def switch_backend(self, name: str) -> None:
+        """Change which AI service does the thinking, without restarting Jarvis."""
+        if name == self.config.brain.backend:
+            return
+        await self.assistant.interrupt()
+        previous_name, previous = self.config.brain.backend, self.backend
+        self.config.brain.backend = name
+        # Claude Code brings its own web tools; the other backends use Jarvis's.
+        self.executor.registry = build_registry(include_web=name != "claude")
+        try:
+            replacement = self._make_backend(name)
+            await replacement.start()
+        except Exception:
+            self.config.brain.backend = previous_name
+            self.executor.registry = build_registry(include_web=previous_name != "claude")
+            raise
+        self.backend = self.assistant.backend = replacement
+        await previous.close()
+        save_config(self.paths, self.config)
+        await self.assistant.new_conversation()
+        self.bus.emit("backend", **self.backend.status())
+
     async def apply_settings(self, changes: dict) -> None:
         """Apply a validated settings change from the interface and make it take effect."""
         persona_changed = False
@@ -82,7 +108,7 @@ class JarvisCore:
             for key, value in values.items():
                 if getattr(target, key) != value:
                     setattr(target, key, value)          # validated on assignment by the config model
-                    persona_changed |= section in {"user", "claude"} or key in {"approved_dirs", "read_only_dirs"}
+                    persona_changed |= section in {"user", "claude", "openai"} or key in {"approved_dirs", "read_only_dirs"}
         save_config(self.paths, self.config)
         self.services.refresh()
         if persona_changed:

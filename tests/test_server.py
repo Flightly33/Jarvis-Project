@@ -186,3 +186,26 @@ def test_reminders_fire_through_the_scheduler(core):
     while not q.empty():
         seen.append(q.get_nowait())
     assert [e["text"] for e in seen if e["type"] == "reminder"] == ["stretch"]
+
+
+def test_switching_to_another_ai_service_from_settings(client, core):
+    saved = client.patch("/api/settings", json={"ai_provider": "groq", "ai_key": "gsk-secret-value"}).json()
+    assert saved["ai_provider"] == "groq" and saved["ai_key_saved"] is True
+    assert "gsk-secret-value" not in str(saved)                              # the key is never sent back
+    assert "gsk-secret-value" not in core.paths.config_file.read_text()      # nor written to the settings file
+    assert "gsk-secret-value" in core.paths.secrets_file.read_text()
+    assert oct(core.paths.secrets_file.stat().st_mode & 0o777) == "0o600"
+    switched = client.patch("/api/settings", json={"backend": "openai", "ai_model": "some-model"}).json()
+    assert switched["backend"] == "openai" and core.backend.name == "openai" and core.assistant.backend is core.backend
+    assert core.executor.registry.get("web_search") is not None             # this backend uses Jarvis's own web tools
+    state = client.get("/api/state").json()
+    assert "some-model via api.groq.com" in state["backend"]["label"]
+    assert client.patch("/api/settings", json={"backend": "demo"}).json()["backend"] == "demo"
+
+
+def test_unsafe_service_addresses_are_refused(client):
+    assert client.patch("/api/settings", json={"ai_provider": "custom", "ai_base_url": "http://example.com/v1"}).status_code == 422
+    assert client.patch("/api/settings", json={"ai_provider": "custom", "ai_base_url": "ftp://x"}).status_code == 422
+    assert client.patch("/api/settings", json={"ai_provider": "nonsense"}).status_code == 422
+    ok = client.patch("/api/settings", json={"ai_provider": "custom", "ai_base_url": "http://localhost:1234/v1"})
+    assert ok.status_code == 200 and ok.json()["ai_provider"] == "custom"

@@ -79,6 +79,7 @@ function handle(event) {
     case "conversation": return divider("New conversation");
     case "job": if (event.finished) toast(`${event.job.command}: ${event.job.status}`, event.job.status === "finished" ? "info" : "warning", "Background command"); return;
     case "settings_changed": return loadSettings();
+    case "backend": $("#brain").textContent = event.label; return;
     default: return;
   }
 }
@@ -436,9 +437,9 @@ function fillSettings() {
     if (!field) continue;
     if (field.type === "checkbox") field.checked = Boolean(value); else field.value = value ?? "";
   }
-  const claude = s.backend === "claude";
-  form.elements.model.disabled = !claude;
-  form.elements.effort.disabled = !claude;
+  form.elements.brain.value = s.backend === "openai" ? s.ai_provider : s.backend;
+  form.elements.ai_key.value = "";
+  showBrainFields();
   const list = $("#folder-list");
   list.replaceChildren();
   const row = (path, mode) => {
@@ -458,6 +459,46 @@ function fillSettings() {
   $("#settings-file").textContent = s.settings_file ? `More options in ${s.settings_file}` : "";
 }
 
+function showBrainFields() {
+  const form = $("#settings-form");
+  const choice = form.elements.brain.value;
+  const api = !["claude", "demo"].includes(choice);
+  $("#brain-claude").hidden = choice !== "claude";
+  $("#brain-api").hidden = !api;
+  if (!api) return;
+  const preset = (state.settings.ai_presets || {})[choice];
+  $("#ai-url-row").hidden = choice !== "custom";
+  $("#ai-key-row").hidden = Boolean(preset) && !preset.needs_key;
+  const sameService = state.settings.ai_provider === choice;
+  form.elements.ai_key.placeholder = sameService && state.settings.ai_key_saved ? "A key is saved - leave empty to keep it" : "Paste your key";
+  const link = $("#ai-keys-link");
+  link.hidden = !(preset && preset.keys_page);
+  if (preset && preset.keys_page) link.href = preset.keys_page;
+}
+
+function serviceBody() {
+  const form = $("#settings-form");
+  const choice = form.elements.brain.value;
+  const body = { ai_provider: choice };
+  if (choice === "custom") body.ai_base_url = form.elements.ai_base_url.value.trim();
+  if (form.elements.ai_key.value.trim()) body.ai_key = form.elements.ai_key.value.trim();
+  return body;
+}
+
+async function listModels() {
+  try {
+    state.settings = await api("/api/settings", "PATCH", serviceBody());      // save the service and key first
+    $("#settings-form").elements.ai_key.value = "";
+    showBrainFields();
+    const found = (await api("/api/models")).models;
+    const list = $("#ai-models");
+    list.replaceChildren();
+    for (const name of found) { const option = el("option"); option.value = name; list.append(option); }
+    showSettingsError("");
+    toast(`${found.length} models available. Click the Model box to choose one.`, "info");
+  } catch (error) { showSettingsError(error.message); }
+}
+
 function showSettingsError(message) {
   const box = $("#settings-error");
   box.textContent = message;
@@ -468,7 +509,12 @@ async function saveSettings() {
   const form = $("#settings-form");
   const body = {};
   for (const name of ["name", "honorific", "autonomy", "wake_word", "wake_sensitivity"]) body[name] = form.elements[name].value;
-  if (!form.elements.model.disabled) { body.model = form.elements.model.value; body.effort = form.elements.effort.value; }
+  const choice = form.elements.brain.value;
+  if (choice === "claude") { body.model = form.elements.model.value; body.effort = form.elements.effort.value; }
+  if (!["claude", "demo"].includes(choice)) {
+    Object.assign(body, serviceBody(), { ai_model: form.elements.ai_model.value.trim(), ai_vision: form.elements.ai_vision.checked });
+  }
+  body.backend = ["claude", "demo"].includes(choice) ? choice : "openai";
   for (const name of ["voice_enabled", "wake_enabled"]) body[name] = form.elements[name].checked;
   for (const name of ["followup_seconds", "tts_speed", "tts_volume"]) body[name] = Number(form.elements[name].value);
   try {
@@ -602,6 +648,8 @@ $("#wake-toggle").addEventListener("change", (event) => {
 $("#new-chat").addEventListener("click", () => api("/api/conversation/new", "POST").catch((error) => toast(error.message, "error")));
 $("#open-settings").addEventListener("click", async () => { await loadSettings(); showSettingsError(""); $("#settings").showModal(); });
 $("#settings-save").addEventListener("click", saveSettings);
+$("#settings-form").elements.brain.addEventListener("change", showBrainFields);
+$("#ai-list").addEventListener("click", listModels);
 $("#folder-add").addEventListener("click", async () => {
   const path = $("#folder-path").value.trim();
   if (!path) return;

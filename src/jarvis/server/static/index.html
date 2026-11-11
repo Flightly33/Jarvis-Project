@@ -85,12 +85,35 @@
         </fieldset>
         <fieldset>
           <legend>Thinking</legend>
-          <label>Model
-            <select name="model"><option value="haiku">Haiku - fastest, lightest on your plan</option><option value="sonnet">Sonnet - stronger, uses more of your plan</option><option value="opus">Opus - strongest, uses the most</option></select>
+          <label>Jarvis thinks with
+            <select name="brain">
+              <option value="claude">Your Claude plan</option>
+              <option value="groq">Groq (free tier)</option>
+              <option value="gemini">Google Gemini (free tier)</option>
+              <option value="openrouter">OpenRouter (free models)</option>
+              <option value="ollama">Ollama (runs on this computer)</option>
+              <option value="custom">Another service</option>
+              <option value="demo">Demo - no AI, canned replies</option>
+            </select>
           </label>
-          <label>Effort
-            <select name="effort"><option value="low">Low - quickest replies</option><option value="medium">Medium</option><option value="high">High - most careful</option></select>
-          </label>
+          <div id="brain-claude" class="stack">
+            <label>Model
+              <select name="model"><option value="haiku">Haiku - fastest, lightest on your plan</option><option value="sonnet">Sonnet - stronger, uses more of your plan</option><option value="opus">Opus - strongest, uses the most</option></select>
+            </label>
+            <label>Effort
+              <select name="effort"><option value="low">Low - quickest replies</option><option value="medium">Medium</option><option value="high">High - most careful</option></select>
+            </label>
+          </div>
+          <div id="brain-api" class="stack" hidden>
+            <label id="ai-url-row">Service address <input name="ai_base_url" placeholder="https://…/v1"></label>
+            <label id="ai-key-row">API key <input name="ai_key" type="password" autocomplete="off"></label>
+            <a id="ai-keys-link" class="hint" target="_blank" rel="noopener noreferrer" hidden>Get a free key from this service</a>
+            <label>Model <input name="ai_model" list="ai-models" placeholder="Pick from the list"></label>
+            <datalist id="ai-models"></datalist>
+            <button id="ai-list" class="btn small" type="button">Show available models</button>
+            <label class="switch"><input name="ai_vision" type="checkbox"><span class="track"></span><span>This model can look at images</span></label>
+            <p class="hint">Free services allow only a few requests a minute, and what you ask - including file contents Jarvis reads for you - is sent to that company, which may keep it or use it to improve its products.</p>
+          </div>
         </fieldset>
         <fieldset>
           <legend>Safety</legend>

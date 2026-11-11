@@ -20,6 +20,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -27,7 +28,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from jarvis import __version__
-from jarvis.config import expand_dirs
+from jarvis.brain.base import BackendUnavailable
+from jarvis.brain.openai_compat import PRESETS, OpenAICompatBackend, _ApiError
+from jarvis.config import expand_dirs, get_secret, set_secret
 from jarvis.core import JarvisCore
 
 log = logging.getLogger(__name__)
@@ -75,6 +78,12 @@ class SettingsBody(_Body):
     followup_seconds: float | None = Field(default=None, ge=0, le=30)
     tts_speed: float | None = Field(default=None, ge=0.5, le=2.0)
     tts_volume: float | None = Field(default=None, ge=0.0, le=2.0)
+    backend: Literal["claude", "openai", "demo"] | None = None
+    ai_provider: str | None = Field(default=None, max_length=30)      # a preset name, or "custom"
+    ai_base_url: str | None = Field(default=None, max_length=300)
+    ai_model: str | None = Field(default=None, max_length=120)
+    ai_key: str | None = Field(default=None, max_length=400)          # write-only: never sent back
+    ai_vision: bool | None = None
 
 
 _SETTING_MAP = {
@@ -151,6 +160,10 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             "read_only_dirs": [str(p) for p in core.services.sandbox.read_only],
             "command_allowlist": list(cfg.safety.command_allowlist),
             "settings_file": str(core.paths.config_file),
+            "ai_provider": next((name for name, p in PRESETS.items() if p["base_url"] == cfg.openai.base_url), "custom"),
+            "ai_base_url": cfg.openai.base_url, "ai_model": cfg.openai.model, "ai_vision": cfg.openai.supports_vision,
+            "ai_key_saved": bool(cfg.openai.api_key_env and get_secret(core.paths, cfg.openai.api_key_env)),
+            "ai_presets": {name: {"label": p["label"], "keys_page": p["keys_page"], "needs_key": bool(p["api_key_env"])} for name, p in PRESETS.items()},
         }
 
     def snapshot() -> dict[str, Any]:
@@ -211,15 +224,56 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
     async def patch_settings(body: SettingsBody) -> dict[str, Any]:
         changes: dict[str, dict[str, Any]] = {}
         for field, value in body.model_dump(exclude_none=True).items():
-            section, key = _SETTING_MAP[field]
-            changes.setdefault(section, {})[key] = value
+            if field in _SETTING_MAP:
+                section, key = _SETTING_MAP[field]
+                changes.setdefault(section, {})[key] = value
+        service: dict[str, Any] = {}
+        if body.ai_provider is not None:
+            if body.ai_provider in PRESETS:
+                preset = PRESETS[body.ai_provider]
+                service |= {"base_url": preset["base_url"], "api_key_env": preset["api_key_env"]}
+            elif body.ai_provider == "custom":
+                url = (body.ai_base_url or core.config.openai.base_url).strip()
+                parts = urlsplit(url)
+                local = parts.hostname in {"localhost", "127.0.0.1", "::1"}
+                if parts.scheme not in {"http", "https"} or not parts.hostname or (parts.scheme == "http" and not local):
+                    raise HTTPException(422, "The service address must start with https:// (http:// is only accepted for this computer).")
+                service |= {"base_url": url, "api_key_env": "JARVIS_AI_KEY"}
+            else:
+                raise HTTPException(422, "Unknown AI service.")
+        if body.ai_model is not None:
+            service["model"] = body.ai_model.strip()
+        if body.ai_vision is not None:
+            service["supports_vision"] = body.ai_vision
+        if service:
+            changes["openai"] = service
         try:
             await core.apply_settings(changes)
-        except ValueError as exc:
+            if body.ai_key:
+                name = core.config.openai.api_key_env
+                if not name:
+                    raise HTTPException(422, "This service does not use an API key.")
+                set_secret(core.paths, name, body.ai_key.strip())
+            if body.backend is not None:
+                await core.switch_backend(body.backend)
+        except (ValueError, BackendUnavailable) as exc:
             raise HTTPException(422, str(exc)) from exc
         if voice is not None and "voice" in changes:
             await voice.reconfigure()
         return settings_view()
+
+    @app.get("/api/models")
+    async def models() -> dict[str, Any]:
+        """What the configured AI service offers, so a model can be picked from a list."""
+        probe = OpenAICompatBackend(core.services, core.executor, lambda: "")
+        if not core.config.openai.base_url:
+            raise HTTPException(409, "Choose an AI service first.")
+        try:
+            return {"models": await probe.list_models()}
+        except _ApiError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - network failures of every kind
+            raise HTTPException(502, f"Could not reach the AI service: {type(exc).__name__}") from exc
 
     @app.post("/api/folders")
     async def add_folder(body: FolderBody) -> dict[str, Any]:
