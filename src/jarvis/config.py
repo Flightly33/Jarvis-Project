@@ -95,7 +95,7 @@ class VoiceConfig(_Section):
     start_timeout_seconds: float = Field(default=6.0, gt=0)
     end_silence_seconds: float = Field(default=0.8, ge=0.2, le=5)
     max_utterance_seconds: float = Field(default=30.0, ge=2)
-    stt_model: str = "moonshine-base-en"
+    stt_model: str = "moonshine-tiny-en"
     tts_voice: str = "en_GB-alan-medium"
     tts_speed: float = Field(default=1.0, ge=0.5, le=2.0)
     tts_volume: float = Field(default=1.0, ge=0.0, le=2.0)
@@ -126,6 +126,7 @@ class ServerConfig(_Section):
     host: str = "127.0.0.1"
     port: int = Field(default=8765, ge=1, le=65535)
     open_browser: bool = True
+    app_window: bool = Field(default=True, description="Open the interface in its own window when a suitable browser is installed.")
 
     @field_validator("host")
     @classmethod
