@@ -117,6 +117,8 @@ import http.server  # noqa: E402
 import os  # noqa: E402
 import threading  # noqa: E402
 
+_REAL_ENV = dict(os.environ)      # captured before any test replaces the home folder
+
 PAGE = b"""<html><head><title>Inbox</title></head><body><h1>Inbox (2)</h1><p>From Dana: essay feedback</p>
 <a href="/second">Open message</a><input id="q" placeholder="Search mail"><input type="password" placeholder="Password">
 <button onclick="document.title='clicked'">Mark read</button></body></html>"""
@@ -140,6 +142,9 @@ async def test_browser_tools_read_click_and_refuse_passwords(executor, turn, ser
     from jarvis.tools import browser
 
     monkeypatch.setenv("JARVIS_BROWSER_HEADLESS", "1")
+    for name in ("USERPROFILE", "HOME"):          # browsers will not start with a made-up user profile folder
+        if _REAL_ENV.get(name):
+            monkeypatch.setenv(name, _REAL_ENV[name])
     services.config.desktop.browser_path = os.environ.get("JARVIS_TEST_BROWSER", "")
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Site)
     threading.Thread(target=server.serve_forever, daemon=True).start()
