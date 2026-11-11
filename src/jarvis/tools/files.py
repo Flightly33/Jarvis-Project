@@ -75,6 +75,11 @@ def _backup(ctx: ToolContext, path: Path) -> str | None:
     return str(dest)
 
 
+def _read_exact(path: Path) -> str:
+    """File text exactly as stored, without line-ending translation."""
+    return path.read_bytes().decode("utf-8")
+
+
 def _is_binary(sample: bytes) -> bool:
     if b"\x00" in sample:
         return True
@@ -345,11 +350,11 @@ async def _run_write(a: WriteFileInput, ctx: ToolContext) -> ToolResult:
     backup = _backup(ctx, path) if existed else None
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.jarvis-tmp")
-    tmp.write_text(a.content, encoding="utf-8")
+    tmp.write_text(a.content, encoding="utf-8", newline="")   # byte-exact: no line-ending translation
     os.replace(tmp, path)
     written = path.stat().st_size
     result = {"path": str(path), "action": "overwritten" if existed else "created", "bytes": written,
-              "verified": path.read_text(encoding="utf-8") == a.content}
+              "verified": _read_exact(path) == a.content}
     if backup:
         result["backup"] = backup
     return ToolResult(result, f"{result['action']} {path.name} ({written} bytes)")
@@ -376,7 +381,7 @@ async def _run_edit(a: EditFileInput, ctx: ToolContext) -> ToolResult:
         raise ToolError(f"{path} does not exist or is not a file.")
     if not a.old_text:
         raise ToolError("old_text must not be empty.")
-    text = path.read_text(encoding="utf-8")
+    text = _read_exact(path)
     count = text.count(a.old_text)
     if count == 0:
         raise ToolError("old_text was not found in the file. Read the file again and copy the text exactly.")
@@ -385,10 +390,10 @@ async def _run_edit(a: EditFileInput, ctx: ToolContext) -> ToolResult:
     backup = _backup(ctx, path)
     updated = text.replace(a.old_text, a.new_text) if a.replace_all else text.replace(a.old_text, a.new_text, 1)
     tmp = path.with_name(f".{path.name}.jarvis-tmp")
-    tmp.write_text(updated, encoding="utf-8")
+    tmp.write_text(updated, encoding="utf-8", newline="")
     shutil.copymode(path, tmp)
     os.replace(tmp, path)
-    result = {"path": str(path), "replacements": count if a.replace_all else 1, "verified": path.read_text(encoding="utf-8") == updated}
+    result = {"path": str(path), "replacements": count if a.replace_all else 1, "verified": _read_exact(path) == updated}
     if backup:
         result["backup"] = backup
     return ToolResult(result, f"edited {path.name} ({result['replacements']} replacement(s))")
