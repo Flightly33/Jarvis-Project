@@ -174,3 +174,33 @@ async def test_browser_tools_read_click_and_refuse_passwords(executor, turn, ser
     finally:
         await browser.close_browser()
         server.shutdown()
+
+
+@windows_only
+def test_text_is_pasted_into_a_real_window_and_terminals_are_refused():
+    """Opens Notepad, pastes into it through the real Windows path, and reads the text back."""
+    import subprocess
+    import time
+
+    from jarvis.tools import windows_input as wi
+    from jarvis.tools.base import ToolError
+
+    notepad = subprocess.Popen(["notepad.exe"])  # noqa: S603, S607
+    try:
+        deadline = time.time() + 30
+        while not any("notepad" in w["program"].lower() for w in wi.list_windows()):
+            assert time.time() < deadline, f"Notepad never showed a window: {wi.list_windows()}"
+            time.sleep(1)
+        marker = "jarvis paste check; Remove-Item nothing $(1+1) 'quoted' \"double\""
+        target = wi.paste_into_window("notepad", text=marker)
+        assert "notepad" in target.lower()
+        copied = wi._powershell(
+            "Add-Type -AssemblyName System.Windows.Forms; Set-Clipboard -Value 'empty'; "
+            "[System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 300; "
+            "[System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 500; Get-Clipboard -Raw")
+        assert marker in copied
+        with pytest.raises(ToolError, match="No open window"):
+            wi.paste_into_window("no such window title 8431", text="x")
+    finally:
+        subprocess.run(["taskkill", "/F", "/IM", "notepad.exe", "/T"], capture_output=True, check=False)  # noqa: S603, S607
+        notepad.kill()

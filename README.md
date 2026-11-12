@@ -80,7 +80,9 @@ file: the interface, approvals and voice all work, with canned replies instead o
 | Phone: chat, approvals, reminders and calendar alerts through a private Telegram bot | Tested against a simulated Telegram; **not yet run against the real service** |
 | Phone calls and text messages to your number | Not built: they need a paid telephone service |
 | Sending email; Google Calendar, Drive, Outlook, school systems, GitHub | Not built yet |
-| Clicking and typing inside other applications' windows | Not built yet |
+| Pasting text or a file into another application's window (Windows; always asks first; never command-line windows) | Tested by pasting into Notepad in the Windows build; **not yet tried with other apps** |
+| Photos and files sent from your phone are saved for Jarvis to look at | Tested against a simulated Telegram |
+| Clicking inside other applications' windows | Not built yet |
 
 ## Phone
 

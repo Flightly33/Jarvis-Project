@@ -675,3 +675,50 @@ async def test_extension_page_code_clicks_and_types_in_a_real_page_but_not_passw
             assert "no longer" in (await page.evaluate("clickControl(999)"))["error"]
         finally:
             await browser.close()
+
+
+def test_arguments_named_title_survive_schema_cleaning(executor):
+    """The calendar could not be used at all: its "title" argument was stripped as if it were a schema label."""
+    for tool in executor.registry.all() if hasattr(executor.registry, "all") else [executor.registry.get(n) for n in executor.registry.names()]:
+        schema = tool.schema()
+        assert set(schema.get("required", [])) <= set(schema["properties"]), tool.name
+        assert "title" not in {k for k in schema if k != "properties"}, tool.name
+    schema = executor.registry.get("add_calendar_event").schema()
+    assert schema["properties"]["title"] == {"type": "string"} and "title" in schema["required"]
+
+
+async def test_calendar_event_can_be_added_through_the_tool(executor, turn):
+    out, data = await call(executor, turn, "add_calendar_event", title="Robotics Tournament", start="2026-11-14T08:00", end="2026-11-14T17:00")
+    assert not out.is_error and data["event"]["title"] == "Robotics Tournament"
+
+
+async def test_view_image_shows_a_picture_without_leaving_files_behind(executor, turn, workspace):
+    from PIL import Image
+
+    Image.new("RGB", (3000, 1000), "navy").save(workspace / "shot.png")
+    (workspace / "notes.txt").write_text("not a picture")
+    out, _ = await call(executor, turn, "view_image", path="shot.png")
+    assert not out.is_error and out.images and out.images[0].mime_type == "image/jpeg" and '"width": 1568' in out.text
+    assert sorted(p.name for p in workspace.iterdir()) == ["notes.txt", "shot.png"]
+    out, _ = await call(executor, turn, "view_image", path="notes.txt")
+    assert out.is_error and "could not be opened as a picture" in out.text
+
+
+def test_window_paste_reports_refusals_and_never_runs_text_as_code(monkeypatch):
+    from jarvis.tools import windows_input as wi
+    from jarvis.tools.base import ToolError
+
+    seen = {}
+
+    def fake(script, extra_env=None, timeout=40.0):
+        seen["script"], seen["env"] = script, extra_env
+        return seen["answer"]
+
+    monkeypatch.setattr(wi, "_powershell", fake)
+    seen["answer"] = "OK claude | Claude"
+    assert wi.paste_into_window("claude", text="fix this; Remove-Item C:\\ -Recurse", press_enter=True) == "claude | Claude"
+    assert "Remove-Item" not in seen["script"] and seen["env"]["JARVIS_TEXT"].startswith("fix this") and seen["env"]["JARVIS_ENTER"] == "1"
+    for answer, words in (("NOWINDOW", "No open window"), ("TERMINAL powershell", "command-line window"), ("NOFOCUS", "nothing was sent"), ("", "Nothing was sent")):
+        seen["answer"] = answer
+        with pytest.raises(ToolError, match=words):
+            wi.paste_into_window("x", text="hi")

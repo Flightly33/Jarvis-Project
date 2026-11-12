@@ -137,9 +137,20 @@ async function handle(command, args) {
     const tab = args.tab_id ? await chrome.tabs.get(args.tab_id) : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
     if (!tab) throw new Error("There is no such tab.");
     if (!/^https?:/.test(tab.url || "")) throw new Error("That tab is a browser page that cannot be read.");
+    // Pages such as Google Classroom fill themselves in after loading, so wait until the text stops growing.
     const [frame] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: (limit) => ({ title: document.title, url: location.href, text: (document.body ? document.body.innerText : "").slice(0, limit) }),
+      func: async (limit) => {
+        const text = () => { const b = document.body; return b ? (b.innerText || b.textContent || "").trim() : ""; };
+        let last = text();
+        for (let i = 0; i < 16; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          const now = text();
+          if (now.length >= 200 && now.length === last.length && document.readyState === "complete") { last = now; break; }
+          last = now;
+        }
+        return { title: document.title, url: location.href, text: last.slice(0, limit), length: last.length };
+      },
       args: [args.limit || 8000],
     });
     return { tab_id: tab.id, ...frame.result };

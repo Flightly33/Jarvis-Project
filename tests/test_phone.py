@@ -24,6 +24,11 @@ class Telegram:
         self.incoming.append({"update_id": self.next_id, "message": {"chat": {"id": chat}, "text": text}})
         self.next_id += 1
 
+    def photo(self, chat: int, caption: str = ""):
+        sizes = [{"file_id": "small", "file_size": 100}, {"file_id": "big", "file_size": 5000}]
+        self.incoming.append({"update_id": self.next_id, "message": {"chat": {"id": chat}, "photo": sizes, "caption": caption}})
+        self.next_id += 1
+
     def speak(self, chat: int, file_id: str = "rec1", duration: int = 3):
         self.incoming.append({"update_id": self.next_id, "message": {"chat": {"id": chat}, "voice": {"file_id": file_id, "duration": duration, "file_size": 900}}})
         self.next_id += 1
@@ -220,3 +225,24 @@ async def test_jarvis_can_message_and_voice_the_phone_when_asked(rig):
     outcome = await core.executor.execute("phone_message", {"text": "Dinner is ready.", "spoken": True}, turn)
     assert not outcome.is_error and '"voice_message": true' in outcome.text
     assert (222, "Dinner is ready.") in telegram.sent and b"OGG:Dinner is ready." in telegram.voices[-1]
+
+
+async def test_photos_from_the_phone_are_kept_for_jarvis_to_look_at(rig):
+    core, telegram, workspace = rig
+    telegram.photo(111, "look at this")                    # strangers' files are not fetched
+    await until(lambda: any(c == 111 and "private" in t for c, t in telegram.sent))
+    assert not (workspace / "From phone").exists()
+    core.config.phone.telegram_chat_id = 222
+    asked: list[str] = []
+    original = core.assistant.ask
+
+    async def ask(text, source):
+        asked.append(text)
+        return await original("what time is it", source)
+
+    core.assistant.ask = ask
+    telegram.photo(222, "what does this error say?")
+    await until(lambda: asked and any(c == 222 for c, _ in telegram.sent))
+    saved = list((workspace / "From phone").iterdir())
+    assert len(saved) == 1 and saved[0].read_bytes() == b"RECORDING:big.oga" and saved[0].suffix == ".jpg"
+    assert asked[0].startswith("what does this error say?") and str(saved[0]) in asked[0]

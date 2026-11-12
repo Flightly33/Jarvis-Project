@@ -150,9 +150,10 @@ class Tool:
         return schema
 
 
-def _clean(node: Any) -> Any:
+def _clean(node: Any, names: bool = False) -> Any:
+    """Drop the schema's descriptive "title" labels - but never an argument that happens to be called title."""
     if isinstance(node, dict):
-        return {k: _clean(v) for k, v in node.items() if k != "title"}
+        return {k: _clean(v, k in {"properties", "$defs"}) for k, v in node.items() if names or k != "title"}
     if isinstance(node, list):
         return [_clean(v) for v in node]
     return node

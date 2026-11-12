@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import logging
 import secrets
+import time
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -30,6 +31,7 @@ SECRET = "JARVIS_TELEGRAM_TOKEN"  # noqa: S105 - the name of a stored secret
 _LIMIT = 3900
 _MAX_NOTE_SECONDS = 120
 _MAX_NOTE_BYTES = 5_000_000
+_MAX_FILE_BYTES = 20_000_000
 
 
 def intent_is_stop(text: str) -> bool:
@@ -150,6 +152,34 @@ class PhoneLink:
         await self.send(f"I heard: {text}")
         await self._handle(chat, text, spoken=True)
 
+    async def _receive(self, chat: int, attachment: dict[str, Any], caption: str) -> None:
+        """A photo or file from the phone: keep it in an approved folder and tell Jarvis where it is."""
+        if chat != self.owner:
+            await self._handle(chat, "(file)")
+            return
+        if int(attachment.get("file_size") or 0) > _MAX_FILE_BYTES:
+            await self.send("That file is too large for me to receive here (the limit is 20 MB).")
+            return
+        roots = self.core.services.sandbox.approved
+        if not roots:
+            await self.send("I have no approved folder to keep that in. Add one under Settings > Safety.")
+            return
+        try:
+            data = await self._download(attachment["file_id"])
+        except Exception as exc:  # noqa: BLE001
+            await self.send(f"I could not fetch that file from Telegram ({type(exc).__name__}).")
+            return
+        given = "".join(ch for ch in str(attachment.get("file_name") or "") if ch.isalnum() or ch in " ._-").strip(" .")
+        name = given or f"photo-{time.strftime('%Y%m%d-%H%M%S')}.jpg"
+        folder = roots[0] / "From phone"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / name
+        if path.exists():
+            path = folder / f"{path.stem}-{time.strftime('%H%M%S')}{path.suffix}"
+        path.write_bytes(data)
+        request = caption or "I have sent you this file. Tell me briefly what it is and ask what I want done with it."
+        await self._handle(chat, f"{request}\n\n[Sent from the phone with this message: a file now saved at {path}. Use view_image to look at it if it is a picture.]")
+
     async def _poll(self) -> None:
         while True:
             try:
@@ -167,9 +197,12 @@ class PhoneLink:
                 text = (message.get("text") or "").strip()
                 chat = (message.get("chat") or {}).get("id")
                 recording = message.get("voice") or message.get("audio")
-                if chat and (text or recording):
+                attachment = (message.get("photo") or [None])[-1] or message.get("document")      # the last photo size is the largest
+                if chat and (text or recording or attachment):
                     try:
-                        if recording and not text:
+                        if attachment:
+                            await self._receive(int(chat), attachment, (message.get("caption") or "").strip())
+                        elif recording and not text:
                             await self._hear(int(chat), recording)
                         else:
                             await self._handle(int(chat), text)

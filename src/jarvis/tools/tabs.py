@@ -97,7 +97,8 @@ def _assess_read(a: TabReadInput, ctx: ToolContext) -> Assessment:
 
 async def _run_read(a: TabReadInput, ctx: ToolContext) -> ToolResult:
     page = await bridge.call("read_tab", tab_id=a.tab_id, limit=a.max_chars)
-    text = f"Page: {page.get('title', '')}\nAddress: {page.get('url', '')}\nTab id: {page.get('tab_id')}\n\n{page.get('text', '')}"
+    body = page.get("text", "") or "(The page showed no text. It may still be loading, need the user to sign in, or draw its content in a way that cannot be read; tab_controls may still list its links and buttons.)"
+    text = f"Page: {page.get('title', '')}\nAddress: {page.get('url', '')}\nTab id: {page.get('tab_id')}\n\n{body}"
     return ToolResult(text, f"read {urlsplit(page.get('url', '')).netloc or 'a tab'}", untrusted_source=page.get("url") or "a browser tab")
 
 
