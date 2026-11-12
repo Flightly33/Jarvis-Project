@@ -238,7 +238,7 @@ def open_interface(url: str, app_window: bool = True) -> None:
     try:
         if browser:
             subprocess.Popen(  # noqa: S603 - a browser found in its standard install location
-                [browser, f"--app={url}", "--window-size=1320,860"],
+                [browser, f"--app={url}", "--window-size=1320,860", "--force-dark-mode"],     # dark title bar to match the interface
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             return
