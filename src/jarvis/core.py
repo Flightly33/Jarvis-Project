@@ -51,6 +51,7 @@ class JarvisCore:
         from jarvis.phone import PhoneLink
 
         self.phone = PhoneLink(self)
+        self.services.phone = self.phone
         from jarvis.awake import KeepAwake
 
         self.awake = KeepAwake()

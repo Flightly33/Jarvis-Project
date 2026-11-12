@@ -91,6 +91,7 @@ class Services:
     policy: PolicyEngine = field(init=False)
     jobs: JobManager | None = None
     save_config: Callable[[], None] = lambda: None
+    phone: Any = None                      # the link to the user's phone, when there is one
 
     def __post_init__(self) -> None:
         self.refresh()

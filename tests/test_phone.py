@@ -70,7 +70,7 @@ async def rig(paths, home, workspace):
     core = JarvisCore(paths, cfg)
     set_secret(paths, "JARVIS_TELEGRAM_TOKEN", "TOKEN123")
     telegram = Telegram()
-    core.phone = PhoneLink(core, transport=httpx.MockTransport(telegram), speech=Speech())
+    core.phone = core.services.phone = PhoneLink(core, transport=httpx.MockTransport(telegram), speech=Speech())
     await core.start()
     yield core, telegram, workspace
     await core.close()
@@ -207,3 +207,16 @@ async def test_real_speech_models_understand_a_voice_message(paths):
         if "dentist" in heard and "tomorrow" in heard:
             break
     assert "dentist" in heard and "tomorrow" in heard
+
+
+async def test_jarvis_can_message_and_voice_the_phone_when_asked(rig):
+    core, telegram, _ = rig
+    from jarvis.tools.base import TurnState
+
+    turn = TurnState(source="voice")
+    outcome = await core.executor.execute("phone_message", {"text": "Dinner is ready.", "spoken": True}, turn)
+    assert outcome.is_error and "not paired" in outcome.text
+    core.config.phone.telegram_chat_id = 222
+    outcome = await core.executor.execute("phone_message", {"text": "Dinner is ready.", "spoken": True}, turn)
+    assert not outcome.is_error and '"voice_message": true' in outcome.text
+    assert (222, "Dinner is ready.") in telegram.sent and b"OGG:Dinner is ready." in telegram.voices[-1]
