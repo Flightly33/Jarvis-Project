@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Jarvis Bridge",
-  "version": "0.1.0",
-  "description": "Lets your own Jarvis assistant, running on this computer, list, open and read your browser tabs.",
+  "version": "0.2.0",
+  "description": "Lets your own Jarvis assistant, running on this computer, list, open, read, switch, close and work with your browser tabs. It never touches password fields.",
   "permissions": ["tabs", "scripting", "storage", "alarms"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },

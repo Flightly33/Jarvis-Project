@@ -577,12 +577,22 @@ async def test_tab_tools_talk_to_the_extension(executor, turn):
     out, _ = await call(executor, turn, "tabs_list")
     assert out.is_error and "Settings > Browser extension" in out.text
 
+    sent: list[str] = []
+
     class Socket:
         async def send_json(self, request):
+            sent.append(request["cmd"])
             answers = {
                 "list_tabs": [{"tab_id": 5, "title": "Inbox (3) - Gmail", "url": "https://mail.google.com/", "active": True}],
                 "read_tab": {"tab_id": 5, "title": "Inbox", "url": "https://mail.google.com/", "text": "Dana: essay feedback"},
                 "open_tab": {"tab_id": 9, "title": "Example", "url": "https://example.com/", "active": False},
+                "switch_tab": {"tab_id": 5, "title": "Inbox", "url": "https://mail.google.com/", "active": True},
+                "close_tab": {"tab_id": 5, "title": "Inbox", "url": "https://mail.google.com/"},
+                "navigate_tab": {"tab_id": 5, "title": "News", "url": "https://news.example/"},
+                "list_controls": {"tab_id": 5, "title": "Inbox", "url": "https://mail.google.com/", "more": False,
+                                  "controls": [{"ref": 1, "kind": "button", "label": "Compose"}, {"ref": 2, "kind": "input:password", "label": "(password field)"}]},
+                "click": {"tab_id": 5, "clicked": "Compose", "url": "https://mail.google.com/"},
+                "type": {"tab_id": 5, "typed": 5, "submitted": True, "url": "https://mail.google.com/"},
             }
             ok = request["cmd"] != "read_tab" or request["args"]["tab_id"] != 404
             asyncio.get_running_loop().call_soon(bridge.receive, {"id": request["id"], "ok": ok, "result": answers[request["cmd"]], "error": "There is no such tab."})
@@ -598,6 +608,70 @@ async def test_tab_tools_talk_to_the_extension(executor, turn):
         assert out.is_error and "no such tab" in out.text
         out, _ = await call(executor, turn, "tab_open", url="javascript:alert(1)")
         assert out.is_error
+        out, _ = await call(executor, turn, "tab_switch", tab_id=5)
+        assert not out.is_error
+        out, _ = await call(executor, turn, "tab_controls", tab_id=5)
+        assert "[1] button Compose" in out.text and "(password field)" in out.text
+        # acting on the user's signed-in pages asks first; a refusal means nothing is sent to the browser
+        for name, args in (("tab_click", {"tab_id": 5, "ref": 1}), ("tab_type", {"tab_id": 5, "ref": 1, "text": "hello", "submit": True}),
+                           ("tab_close", {"tab_id": 5}), ("tab_navigate", {"tab_id": 5, "url": "https://news.example/"})):
+            before = len(sent)
+            async with answering(executor.services, False) as asked:
+                out, _ = await call(executor, turn, name, **args)
+            assert out.is_error and len(asked) == 1 and len(sent) == before, name
+            async with answering(executor.services, True) as asked:
+                out, _ = await call(executor, turn, name, **args)
+            assert not out.is_error and len(asked) == 1 and len(sent) == before + 1, name
+        out, _ = await call(executor, turn, "tab_navigate", tab_id=5, url="file:///etc/passwd")
+        assert out.is_error
     finally:
         bridge.detach(socket)
     assert not bridge.connected
+
+
+async def test_extension_page_code_clicks_and_types_in_a_real_page_but_not_passwords():
+    """Runs the code the extension injects into pages against a real browser page."""
+    import os
+    import re
+    from pathlib import Path
+
+    browser_path = os.environ.get("JARVIS_TEST_BROWSER")
+    if not browser_path:
+        pytest.skip("set JARVIS_TEST_BROWSER to a Chromium program to run this")
+    from playwright.async_api import async_playwright
+
+    source = (Path(__file__).parents[1] / "src/jarvis/extension/background.js").read_text(encoding="utf-8")
+    functions = re.search(r"function listControls.*?(?=\nasync function handle)", source, re.DOTALL).group(0)
+    page_html = """<title>Shop</title><form onsubmit="document.title='sent:'+q.value;return false"><input name=q placeholder="Search">
+      <input type=password name=pw value="hunter2"><textarea aria-label="Note"></textarea>
+      <select aria-label="Size"><option>Small</option><option>Large</option></select></form>
+      <div contenteditable=true aria-label="Message body"></div><button onclick="document.title='clicked'">Add to basket</button>
+      <button style="display:none">Hidden</button><a href="#x">More</a>"""
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(executable_path=browser_path, args=["--no-sandbox"])
+        try:
+            page = await browser.new_page()
+            await page.set_content(page_html)
+            await page.add_script_tag(content=functions)
+            listing = await page.evaluate("listControls(80)")
+            by_label = {c["label"]: c for c in listing["controls"]}
+            assert {"Search", "(password field)", "Note", "Size", "Message body", "Add to basket", "More"} <= set(by_label) and "Hidden" not in by_label
+            assert "hunter2" not in str(listing)
+            secret = by_label["(password field)"]["ref"]
+            assert "password" in (await page.evaluate(f"typeIntoControl({secret}, 'x', false)"))["error"]
+            assert "password" in (await page.evaluate(f"clickControl({secret})"))["error"]
+            assert await page.input_value("input[name=pw]") == "hunter2"
+            await page.evaluate(f"typeIntoControl({by_label['Note']['ref']}, 'buy milk', false)")
+            assert await page.input_value("textarea") == "buy milk"
+            await page.evaluate(f"typeIntoControl({by_label['Message body']['ref']}, 'Dear Dana', false)")
+            assert await page.inner_text("[contenteditable]") == "Dear Dana"
+            await page.evaluate(f"typeIntoControl({by_label['Size']['ref']}, 'large', false)")
+            assert await page.input_value("select") == "Large"
+            assert "no such choice" in (await page.evaluate(f"typeIntoControl({by_label['Size']['ref']}, 'Huge', false)"))["error"]
+            assert (await page.evaluate(f"clickControl({by_label['Add to basket']['ref']})"))["clicked"] == "Add to basket"
+            assert await page.title() == "clicked"
+            await page.evaluate(f"typeIntoControl({by_label['Search']['ref']}, 'red shoes', true)")
+            assert await page.title() == "sent:red shoes"
+            assert "no longer" in (await page.evaluate("clickControl(999)"))["error"]
+        finally:
+            await browser.close()
