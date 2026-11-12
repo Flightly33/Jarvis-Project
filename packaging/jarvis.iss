@@ -11,6 +11,8 @@ OutputBaseFilename=JarvisSetup
 Compression=lzma2
 SolidCompression=yes
 DisableProgramGroupPage=yes
+SetupIconFile=jarvis.ico
+UninstallDisplayIcon={app}\Jarvis.exe
 
 [Files]
 Source: "..\dist\Jarvis\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion

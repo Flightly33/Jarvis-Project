@@ -35,7 +35,7 @@ jobs:
         run: python -m pytest tests/test_windows.py tests/test_voice.py tests/test_server.py tests/test_phone.py -q
       - name: Build application
         run: >
-          pyinstaller --noconfirm --clean --name Jarvis --console
+          pyinstaller --noconfirm --clean --name Jarvis --console --icon packaging/jarvis.ico
           --collect-all claude_agent_sdk --collect-all sherpa_onnx --collect-all piper --collect-all sentencepiece
           --collect-all av --collect-all sounddevice --collect-all _sounddevice_data --collect-all onnxruntime --collect-all playwright
           --collect-submodules jarvis --collect-submodules uvicorn
