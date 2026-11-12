@@ -72,8 +72,31 @@ file: the interface, approvals and voice all work, with canned replies instead o
 | Reminders (spoken and shown when due) and long-term memory | Tested |
 | Web research with sources | Tested live |
 | A second brain: free online AI services (Groq, Gemini, OpenRouter) or a local model (Ollama), chosen in Settings | Tested against a simulated service; **not yet run against a real provider** |
-| Gmail, Calendar, Drive, Outlook, school systems, GitHub | Not built yet |
-| Clicking and typing inside other applications' windows | Not built yet |
+| Calendar in the interface; Jarvis can add, list and remove events and announces them beforehand | Tested |
+| Talk shortcut that works from any window (Ctrl+Alt+J on Windows) | Tested in code only; **not yet confirmed on a real PC** |
+| Reading email (read-only, with an app password) | Tested against a simulated mail server; **not yet run against real Gmail** |
+| A browser Jarvis drives itself (open, read, click, type; never password fields) | Tested with a real browser on Linux and in the Windows build |
+| Jarvis Bridge extension: list, open and read tabs in your own Chrome or Edge | Tested against a simulated extension; **not yet loaded in a real browser** |
+| Phone: chat, approvals, reminders and calendar alerts through a private Telegram bot | Tested against a simulated Telegram; **not yet run against the real service** |
+| Phone calls and text messages to your number | Not built: they need a paid telephone service |
+| Sending email; Google Calendar, Drive, Outlook, school systems, GitHub | Not built yet |
+| Clicking and typing inside other applications' windows or your own browser's tabs | Not built yet |
+
+## Phone
+
+Jarvis can be reached from your phone through a Telegram bot that only you can use. It is free.
+
+1. Install Telegram on your phone, open a chat with **@BotFather**, send `/newbot` and follow the steps.
+   It gives you a token.
+2. In Jarvis open *Settings > Phone*, paste the token and press **Save phone**.
+3. Open your new bot in Telegram and send `/pair` followed by the code shown in Settings.
+
+After that, anything you type to the bot is answered by Jarvis, reminders and upcoming calendar events
+are sent to your phone, and approvals can be answered with "yes" or "no". High-risk actions can only be
+approved at the computer. Send `/stop` to halt whatever Jarvis is doing.
+
+Messages pass through Telegram's servers, and Jarvis must be running on your computer to answer. Keep
+the token private: anyone holding it can read what the bot receives.
 
 ## Voice
 
