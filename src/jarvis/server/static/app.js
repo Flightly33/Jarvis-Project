@@ -554,6 +554,7 @@ function fillSettings() {
 function showPhone() {
   const s = state.settings;
   $("#phone-code").value = s.phone_code || "";
+  $("#keep-awake-row").hidden = !s.keep_awake_supported;
   $("#phone-status").textContent = s.phone_problem || (s.phone_paired && s.phone_connected ? "Paired with your phone." : s.phone_connected ? "Token saved. Now send /pair and the code to your bot." : "Not set up.");
   $("#settings-form").elements.phone_token.placeholder = s.phone_connected ? "A token is saved - leave empty to keep it" : "Paste the token from BotFather";
 }
@@ -615,7 +616,7 @@ async function saveSettings() {
     Object.assign(body, serviceBody(), { ai_model: form.elements.ai_model.value.trim(), ai_vision: form.elements.ai_vision.checked });
   }
   body.backend = ["claude", "demo"].includes(choice) ? choice : "openai";
-  for (const name of ["voice_enabled", "wake_enabled"]) body[name] = form.elements[name].checked;
+  for (const name of ["voice_enabled", "wake_enabled", "keep_awake"]) body[name] = form.elements[name].checked;
   for (const name of ["followup_seconds", "tts_speed", "tts_volume", "tts_expressiveness"]) body[name] = Number(form.elements[name].value);
   try {
     state.settings = await api("/api/settings", "PATCH", body);

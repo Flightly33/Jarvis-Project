@@ -211,6 +211,7 @@ class VoiceController:
             self._set("error", f"Voice failed to start: {type(exc).__name__}: {exc}")
             return
         self._engines, self._mic = engines, microphone
+        self.core.shared_engines = engines
         self._speech = SpeechOutput(engines.tts, speaker, self._publish)
         self._tasks.append(asyncio.create_task(self._listen()))
         self._tasks.append(asyncio.create_task(self._watch_events()))
@@ -256,6 +257,7 @@ class VoiceController:
         if self._speech is not None:
             await self._speech.close()
         self._engines = self._mic = self._speech = self._capture = self._converse = None
+        self.core.shared_engines = None
         self._paused = False
         self._state, self._detail = "off", ""
 

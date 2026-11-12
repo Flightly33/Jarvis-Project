@@ -51,6 +51,10 @@ class JarvisCore:
         from jarvis.phone import PhoneLink
 
         self.phone = PhoneLink(self)
+        from jarvis.awake import KeepAwake
+
+        self.awake = KeepAwake()
+        self.shared_engines = None      # the microphone's speech engines, set by the voice controller while it runs
         self._started = False
 
     def _system_prompt(self) -> str:
@@ -82,6 +86,7 @@ class JarvisCore:
         await self.backend.start()
         self.scheduler.start()
         await self.phone.start()
+        self.awake.set(self.config.phone.keep_awake)
 
     async def switch_backend(self, name: str) -> None:
         """Change which AI service does the thinking, without restarting Jarvis."""
@@ -116,6 +121,7 @@ class JarvisCore:
                     persona_changed |= section in {"user", "claude", "openai"} or key in {"approved_dirs", "read_only_dirs"}
         save_config(self.paths, self.config)
         self.services.refresh()
+        self.awake.set(self.config.phone.keep_awake)
         if persona_changed:
             # the model's standing instructions are fixed per conversation, so start a new one
             await self.assistant.new_conversation()
@@ -130,6 +136,7 @@ class JarvisCore:
     async def close(self) -> None:
         await self.scheduler.stop()
         await self.phone.stop()
+        self.awake.set(False)
         from jarvis.tools.browser import close_browser
 
         await close_browser()

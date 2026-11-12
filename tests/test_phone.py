@@ -17,15 +17,28 @@ class Telegram:
     def __init__(self):
         self.incoming: list[dict] = []
         self.sent: list[tuple[int, str]] = []
+        self.voices: list[bytes] = []
         self.next_id = 1
 
     def say(self, chat: int, text: str):
         self.incoming.append({"update_id": self.next_id, "message": {"chat": {"id": chat}, "text": text}})
         self.next_id += 1
 
+    def speak(self, chat: int, file_id: str = "rec1", duration: int = 3):
+        self.incoming.append({"update_id": self.next_id, "message": {"chat": {"id": chat}, "voice": {"file_id": file_id, "duration": duration, "file_size": 900}}})
+        self.next_id += 1
+
     async def __call__(self, request: httpx.Request) -> httpx.Response:
-        body = json.loads(request.content)
         assert "/botTOKEN123/" in str(request.url)
+        if request.url.path.startswith("/file/"):
+            return httpx.Response(200, content=b"RECORDING:" + request.url.path.rsplit("/", 1)[-1].encode())
+        if request.url.path.endswith("/sendVoice"):
+            assert b'name="chat_id"\r\n\r\n222' in request.content
+            self.voices.append(request.content)
+            return httpx.Response(200, json={"ok": True, "result": {}})
+        body = json.loads(request.content)
+        if request.url.path.endswith("/getFile"):
+            return httpx.Response(200, json={"ok": True, "result": {"file_path": f"voice/{body['file_id']}.oga"}})
         if request.url.path.endswith("/getUpdates"):
             batch = [u for u in self.incoming if u["update_id"] >= body["offset"]]
             if not batch:
@@ -33,6 +46,19 @@ class Telegram:
             return httpx.Response(200, json={"ok": True, "result": batch})
         self.sent.append((body["chat_id"], body["text"]))
         return httpx.Response(200, json={"ok": True, "result": {}})
+
+
+class Speech:
+    """Stands in for the speech models: each recording 'says' a fixed sentence."""
+
+    said = {b"RECORDING:rec1.oga": "create file spoken.txt saying hello from a voice message", b"RECORDING:rec2.oga": "Stop.",
+            b"RECORDING:rec3.oga": ""}
+
+    async def transcribe(self, recording: bytes) -> str:
+        return self.said[recording]
+
+    async def speak(self, text: str) -> bytes:
+        return b"OGG:" + text.encode()
 
 
 @pytest.fixture
@@ -44,7 +70,7 @@ async def rig(paths, home, workspace):
     core = JarvisCore(paths, cfg)
     set_secret(paths, "JARVIS_TELEGRAM_TOKEN", "TOKEN123")
     telegram = Telegram()
-    core.phone = PhoneLink(core, transport=httpx.MockTransport(telegram))
+    core.phone = PhoneLink(core, transport=httpx.MockTransport(telegram), speech=Speech())
     await core.start()
     yield core, telegram, workspace
     await core.close()
@@ -112,3 +138,72 @@ async def test_upcoming_calendar_events_are_announced_once(rig):
     await until(lambda: any("Maths exam starts at" in t for _, t in telegram.sent))
     await asyncio.sleep(0.1)
     assert sum("Maths exam" in t for _, t in telegram.sent) == 1 and not any("Holiday" in t for _, t in telegram.sent)
+
+
+async def test_voice_messages_are_heard_and_answered_in_voice(rig):
+    core, telegram, workspace = rig
+    telegram.speak(111)                                   # a stranger's recording is not even downloaded
+    await until(lambda: any(c == 111 and "private" in t for c, t in telegram.sent))
+    core.config.phone.telegram_chat_id = 222
+    telegram.speak(222)
+    await until(lambda: (workspace / "spoken.txt").exists() and telegram.voices)
+    assert (222, "I heard: create file spoken.txt saying hello from a voice message") in telegram.sent
+    assert b"OGG:I've created spoken.txt" in telegram.voices[0]
+    assert not (workspace / "hacked.txt").exists() and len(telegram.voices) == 1
+    telegram.speak(222, "rec3")
+    await until(lambda: any("could not make out" in t for _, t in telegram.sent))
+    telegram.speak(222, "rec1", duration=900)
+    await until(lambda: any("too long" in t for _, t in telegram.sent))
+    telegram.speak(222, "rec2")                            # saying "stop" halts things, like /stop
+    await until(lambda: (222, "Stopped.") in telegram.sent)
+
+
+def test_voice_message_audio_survives_packing_and_unpacking():
+    pytest.importorskip("av")
+    import numpy as np
+
+    from jarvis.voice.notes import decode, encode
+
+    rate = 22_050
+    tone = (np.sin(2 * np.pi * 440 * np.arange(rate * 2) / rate) * 12000).astype(np.int16)
+    packed = encode(tone.tobytes(), rate)
+    assert packed[:4] == b"OggS" and len(packed) < len(tone.tobytes()) / 4
+    samples = decode(packed)
+    assert abs(len(samples) / 16_000 - 2.0) < 0.1
+    spectrum = np.abs(np.fft.rfft(samples[:16_000]))
+    assert abs(int(spectrum.argmax()) - 440) <= 2            # still the same note
+    with pytest.raises(Exception, match="could not be read"):
+        decode(b"not audio at all")
+
+
+async def test_real_speech_models_understand_a_voice_message(paths):
+    import os
+
+    models = os.environ.get("JARVIS_TEST_MODELS")
+    if not models:
+        pytest.skip("set JARVIS_TEST_MODELS to run against the real speech models")
+    pytest.importorskip("av")
+    from pathlib import Path
+
+    from jarvis.voice.notes import NoteSpeech
+
+    from types import SimpleNamespace
+
+    from jarvis.voice.engines import Synthesizer, Transcriber
+
+    cfg = Config()
+    cfg.brain.backend = "demo"
+    core = JarvisCore(paths, cfg)
+    voice = cfg.voice.tts_voice
+    from jarvis.voice.models import ModelStore
+
+    store = ModelStore(Path(models))
+    core.shared_engines = SimpleNamespace(stt=Transcriber(await store.ensure(cfg.voice.stt_model)),
+                                          tts=Synthesizer(await store.ensure(voice) / f"{voice}.onnx"))
+    speech = NoteSpeech(core)
+    for _ in range(3):                                      # synthesis varies a little from run to run
+        note = await speech.speak("Please remind me to call the dentist tomorrow morning.")
+        heard = (await speech.transcribe(note)).lower()
+        if "dentist" in heard and "tomorrow" in heard:
+            break
+    assert "dentist" in heard and "tomorrow" in heard

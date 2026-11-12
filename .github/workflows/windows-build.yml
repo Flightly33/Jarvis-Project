@@ -32,12 +32,12 @@ jobs:
         env:
           JARVIS_TEST_MODELS: ${{ runner.temp }}\models
           JARVIS_BROWSER_HEADLESS: "1"
-        run: python -m pytest tests/test_windows.py tests/test_voice.py tests/test_server.py -q
+        run: python -m pytest tests/test_windows.py tests/test_voice.py tests/test_server.py tests/test_phone.py -q
       - name: Build application
         run: >
           pyinstaller --noconfirm --clean --name Jarvis --console
           --collect-all claude_agent_sdk --collect-all sherpa_onnx --collect-all piper --collect-all sentencepiece
-          --collect-all sounddevice --collect-all _sounddevice_data --collect-all onnxruntime --collect-all playwright
+          --collect-all av --collect-all sounddevice --collect-all _sounddevice_data --collect-all onnxruntime --collect-all playwright
           --collect-submodules jarvis --collect-submodules uvicorn
           --add-data "src/jarvis/server/static;jarvis/server/static"
           --add-data "src/jarvis/extension;jarvis/extension"

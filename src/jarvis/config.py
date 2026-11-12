@@ -134,6 +134,7 @@ class PhoneConfig(_Section):
     telegram_chat_id: int = Field(default=0, description="The one Telegram chat Jarvis obeys. Set by pairing.")
     notify: bool = Field(default=True, description="Send reminders and calendar alerts to the phone.")
     calendar_lead_minutes: int = Field(default=15, ge=0, le=720)
+    keep_awake: bool = Field(default=False, description="Stop Windows going to sleep on its own while Jarvis runs, so the phone can reach it.")
 
 
 class ServerConfig(_Section):

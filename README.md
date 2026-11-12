@@ -92,10 +92,14 @@ Jarvis can be reached from your phone through a Telegram bot that only you can u
 3. Open your new bot in Telegram and send `/pair` followed by the code shown in Settings.
 
 After that, anything you type to the bot is answered by Jarvis, reminders and upcoming calendar events
-are sent to your phone, and approvals can be answered with "yes" or "no". High-risk actions can only be
+are sent to your phone, and approvals can be answered with "yes" or "no". You can also send the bot a
+**voice message**: Jarvis writes down what it heard and answers in writing and in its own voice (the speech
+is recognised and produced on your computer). High-risk actions can only be
 approved at the computer. Send `/stop` to halt whatever Jarvis is doing.
 
-Messages pass through Telegram's servers, and Jarvis must be running on your computer to answer. Keep
+Messages pass through Telegram's servers, and Jarvis must be running on your computer, with the computer
+awake, to answer. *Keep this computer awake while Jarvis is running* in Settings stops Windows going to
+sleep on its own (closing a laptop lid or choosing Sleep still sleeps it). Keep
 the token private: anyone holding it can read what the bot receives.
 
 ## Voice

@@ -313,7 +313,7 @@ async def _selftest(args: argparse.Namespace) -> int:
     check((EXTENSION / "manifest.json").is_file() and (EXTENSION / "background.js").is_file(), "browser extension files")
     check(_claude_cli() is not None, "Claude Code program", _claude_cli() or "not found")
     voice_ok = True
-    for module in ("numpy", "sherpa_onnx", "sentencepiece", "piper", "sounddevice"):
+    for module in ("numpy", "sherpa_onnx", "sentencepiece", "piper", "sounddevice", "av"):
         try:
             __import__(module)
             check(True, f"voice component {module}")
@@ -352,6 +352,10 @@ async def _selftest(args: argparse.Namespace) -> int:
                     break
             check(woke, "wake word is detected in synthesised speech")
             check("time" in text.lower(), "speech is recognised", repr(text))
+            from jarvis.voice.notes import decode, encode
+
+            note = encode(pcm, rate)                 # the phone link's voice messages: pack, unpack, recognise
+            check("time" in stt.transcribe(decode(note)).lower(), "voice messages are packed and understood", f"{len(note)} bytes")
         except Exception as exc:  # noqa: BLE001
             check(False, "speech engines", f"{type(exc).__name__}: {exc}")
 

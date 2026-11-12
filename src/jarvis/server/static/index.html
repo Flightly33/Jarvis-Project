@@ -173,7 +173,9 @@
           <label>Pairing code <input id="phone-code" readonly></label>
           <div class="row"><button id="phone-save" class="btn small" type="button">Save phone</button>
           <button id="phone-test" class="btn small" type="button">Send a test message</button></div>
-          <p class="hint">Messages pass through Telegram's servers. Jarvis must be running on this computer to answer.</p>
+          <label class="switch" id="keep-awake-row"><input name="keep_awake" type="checkbox"><span class="track"></span><span>Keep this computer awake while Jarvis is running</span></label>
+          <p class="hint">You can also send the bot a voice message: Jarvis writes down what it heard and answers in writing and in its own voice.
+            Messages pass through Telegram's servers. Jarvis must be running on this computer, and the computer must be awake, to answer.</p>
         </fieldset>
         <fieldset>
           <legend>Browser extension</legend>

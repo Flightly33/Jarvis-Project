@@ -28,12 +28,19 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 SECRET = "JARVIS_TELEGRAM_TOKEN"  # noqa: S105 - the name of a stored secret
 _LIMIT = 3900
+_MAX_NOTE_SECONDS = 120
+_MAX_NOTE_BYTES = 5_000_000
+
+
+def intent_is_stop(text: str) -> bool:
+    return local_intent(text) == "stop"
 
 
 class PhoneLink:
-    def __init__(self, core: JarvisCore, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(self, core: JarvisCore, transport: httpx.AsyncBaseTransport | None = None, speech: Any = None) -> None:
         self.core = core
         self._transport = transport
+        self._speech = speech          # turns voice messages into text and replies into voice messages
         self.pairing_code = f"{secrets.randbelow(900000) + 100000}"
         self.problem = ""
         self._tasks: list[asyncio.Task] = []
@@ -91,6 +98,58 @@ class PhoneLink:
             log.warning("could not message the phone: %s", exc)
             return False
 
+    async def _speech_engine(self) -> Any:
+        if self._speech is None:
+            try:
+                from jarvis.voice.notes import NoteSpeech
+            except ImportError as exc:
+                raise RuntimeError("Voice messages need Jarvis's voice support, which is not installed.") from exc
+            self._speech = NoteSpeech(self.core)
+        return self._speech
+
+    async def _download(self, file_id: str) -> bytes:
+        info = await self._api("getFile", file_id=file_id)
+        async with httpx.AsyncClient(timeout=60.0, transport=self._transport) as client:
+            response = await client.get(f"https://api.telegram.org/file/bot{self.token}/{info['file_path']}")
+        response.raise_for_status()
+        return response.content
+
+    async def send_voice(self, text: str) -> bool:
+        """Say `text` to the paired phone as a voice message. Returns False if that was not possible."""
+        try:
+            speech = await self._speech_engine()
+            note = await speech.speak(text)
+            if not note or not self.owner:
+                return False
+            async with httpx.AsyncClient(timeout=60.0, transport=self._transport) as client:
+                response = await client.post(f"https://api.telegram.org/bot{self.token}/sendVoice", data={"chat_id": str(self.owner)},
+                                             files={"voice": ("jarvis.ogg", note, "audio/ogg")})
+            return bool(response.json().get("ok"))
+        except Exception as exc:  # noqa: BLE001 - the written reply still goes out
+            log.warning("could not send a voice message: %s", exc)
+            return False
+
+    async def _hear(self, chat: int, recording: dict[str, Any]) -> None:
+        """A voice message from the phone: write down what was said, then treat it like a typed message."""
+        if chat != self.owner:
+            await self._handle(chat, "(voice message)")
+            return
+        if int(recording.get("duration") or 0) > _MAX_NOTE_SECONDS or int(recording.get("file_size") or 0) > _MAX_NOTE_BYTES:
+            await self.send("That recording is too long for me. Keep voice messages under two minutes.")
+            return
+        try:
+            speech = await self._speech_engine()
+            text = (await speech.transcribe(await self._download(recording["file_id"]))).strip()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not read a voice message: %s", exc)
+            await self.send(f"I could not listen to that voice message. {exc}")
+            return
+        if not text:
+            await self.send("I could not make out any words in that voice message.")
+            return
+        await self.send(f"I heard: {text}")
+        await self._handle(chat, text, spoken=True)
+
     async def _poll(self) -> None:
         while True:
             try:
@@ -107,13 +166,17 @@ class PhoneLink:
                 message = update.get("message") or {}
                 text = (message.get("text") or "").strip()
                 chat = (message.get("chat") or {}).get("id")
-                if text and chat:
+                recording = message.get("voice") or message.get("audio")
+                if chat and (text or recording):
                     try:
-                        await self._handle(int(chat), text)
+                        if recording and not text:
+                            await self._hear(int(chat), recording)
+                        else:
+                            await self._handle(int(chat), text)
                     except Exception:  # noqa: BLE001
                         log.exception("failed to handle a phone message")
 
-    async def _handle(self, chat: int, text: str) -> None:
+    async def _handle(self, chat: int, text: str, spoken: bool = False) -> None:
         if text.lower().startswith("/pair"):
             supplied = text[5:].strip()
             if secrets.compare_digest(supplied, self.pairing_code):
@@ -129,9 +192,9 @@ class PhoneLink:
             await self.send("This Jarvis is private. To pair, send /pair followed by the code shown in its Settings.", chat)
             return
         if text.lower() in {"/start", "/help"}:
-            await self.send("Send a message and Jarvis will act on it on your computer. /stop halts whatever it is doing.")
+            await self.send("Send a message or a voice message and Jarvis will act on it on your computer. /stop halts whatever it is doing.")
             return
-        if text.lower() == "/stop":
+        if text.lower() == "/stop" or (spoken and intent_is_stop(text)):
             await self.core.emergency_stop("phone")
             await self.send("Stopped.")
             return
@@ -142,17 +205,19 @@ class PhoneLink:
             if answered is None:
                 await self.send("That action is high risk, so it can only be approved at the computer. Reply no to decline it.")
             return
-        task = asyncio.create_task(self._turn(text))
+        task = asyncio.create_task(self._turn(text, spoken))
         self._turns.add(task)
         task.add_done_callback(self._turns.discard)
 
-    async def _turn(self, text: str) -> None:
+    async def _turn(self, text: str, spoken: bool = False) -> None:
         self._phone_turns += 1
         try:
             result = await self.core.assistant.ask(text, "phone")
         finally:
             self._phone_turns -= 1
         await self.send(result.text or result.error or ("Stopped." if result.interrupted else "Done."))
+        if spoken and result.text:
+            await self.send_voice(result.text)      # a spoken question gets a spoken answer as well
         if result.error and result.text:
             await self.send(result.error)
 

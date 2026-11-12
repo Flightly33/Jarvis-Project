@@ -33,6 +33,8 @@ voice = [
     # Microphone and speaker access. On Linux this also needs the system package libportaudio2;
     # without it Jarvis falls back to the desktop's own recording and playback commands.
     "sounddevice>=0.4",
+    # Reading and writing voice messages for the phone link.
+    "av>=12",
 ]
 # Keyless web search for the OpenAI-compatible backend.
 search = ["ddgs>=9.0"]
