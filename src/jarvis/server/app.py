@@ -100,6 +100,7 @@ class SettingsBody(_Body):
     email_address: str | None = Field(default=None, max_length=200)
     email_host: str | None = Field(default=None, max_length=200)
     email_password: str | None = Field(default=None, max_length=200)      # write-only
+    phone_token: str | None = Field(default=None, max_length=200)         # write-only
 
 
 _SETTING_MAP = {
@@ -227,6 +228,7 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             "ai_key_saved": bool(cfg.openai.api_key_env and get_secret(core.paths, cfg.openai.api_key_env)),
             "email_address": cfg.email.address, "email_host": cfg.email.imap_host,
             "email_connected": bool(cfg.email.address and get_secret(core.paths, "JARVIS_EMAIL_PASSWORD")),
+            **core.phone.snapshot(),
             "extension_key": extension_key(), "extension_connected": bridge.connected, "extension_folder": str(EXTENSION),
             "ai_presets": {name: {"label": p["label"], "keys_page": p["keys_page"], "needs_key": bool(p["api_key_env"])} for name, p in PRESETS.items()},
         }
@@ -336,6 +338,9 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
         mail = {k: v.strip() for k, v in (("address", body.email_address), ("imap_host", body.email_host)) if v is not None}
         if mail:
             changes["email"] = mail
+        if body.phone_token:
+            set_secret(core.paths, "JARVIS_TELEGRAM_TOKEN", body.phone_token.strip())
+            await core.phone.restart()
         if body.email_password:
             # app passwords are often shown in groups separated by spaces
             set_secret(core.paths, "JARVIS_EMAIL_PASSWORD", body.email_password.replace(" ", ""))
@@ -353,6 +358,12 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
         if voice is not None and "voice" in changes:
             await voice.reconfigure()
         return settings_view()
+
+    @app.post("/api/phone/test")
+    async def phone_test() -> dict[str, bool]:
+        if not await core.phone.send("Jarvis here. Your phone is connected."):
+            raise HTTPException(422, core.phone.problem or "The phone is not paired yet. Send /pair and the code to your bot in Telegram first.")
+        return {"sent": True}
 
     @app.post("/api/email/test")
     async def email_test() -> dict[str, Any]:

@@ -163,6 +163,19 @@
           <button id="email-test" class="btn small" type="button">Save and test email</button>
         </fieldset>
         <fieldset>
+          <legend>Phone</legend>
+          <p id="phone-status" class="hint"></p>
+          <p class="hint">Chat with Jarvis from your phone and get reminders there, free, through Telegram:
+            1. Install Telegram on your phone, open a chat with @BotFather, send /newbot and follow it. It gives you a token.
+            2. Paste the token here and press Save phone.
+            3. Open your new bot in Telegram and send it: /pair followed by the code below.</p>
+          <label>Bot token <input name="phone_token" type="password" autocomplete="off"></label>
+          <label>Pairing code <input id="phone-code" readonly></label>
+          <div class="row"><button id="phone-save" class="btn small" type="button">Save phone</button>
+          <button id="phone-test" class="btn small" type="button">Send a test message</button></div>
+          <p class="hint">Messages pass through Telegram's servers. Jarvis must be running on this computer to answer.</p>
+        </fieldset>
+        <fieldset>
           <legend>Browser extension</legend>
           <p id="ext-status" class="hint"></p>
           <p class="hint">Lets Jarvis list, open and read the tabs in your own Chrome or Edge (it cannot click or type there). To install:

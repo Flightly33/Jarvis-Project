@@ -511,6 +511,7 @@ async function refreshSettingsQuietly() {
   // The dialog is open: update what we know without overwriting what the user is in the middle of choosing.
   try { state.settings = await api("/api/settings"); } catch { return; }
   $("#ext-status").textContent = state.settings.extension_connected ? "Connected to your browser." : "Not connected.";
+  showPhone();
   showBrainFields();
 }
 
@@ -523,6 +524,8 @@ function fillSettings() {
     if (field.type === "checkbox") field.checked = Boolean(value); else field.value = value ?? "";
   }
   form.elements.brain.value = s.backend === "openai" ? s.ai_provider : s.backend;
+  showPhone();
+  form.elements.phone_token.value = "";
   $("#ext-key").value = s.extension_key || "";
   $("#ext-status").textContent = s.extension_connected ? "Connected to your browser." : "Not connected.";
   form.elements.ai_key.value = "";
@@ -546,6 +549,13 @@ function fillSettings() {
   (s.approved_dirs || []).forEach((p) => row(p, "write"));
   (s.read_only_dirs || []).forEach((p) => row(p, "read"));
   $("#settings-file").textContent = s.settings_file ? `More options in ${s.settings_file}` : "";
+}
+
+function showPhone() {
+  const s = state.settings;
+  $("#phone-code").value = s.phone_code || "";
+  $("#phone-status").textContent = s.phone_problem || (s.phone_paired && s.phone_connected ? "Paired with your phone." : s.phone_connected ? "Token saved. Now send /pair and the code to your bot." : "Not set up.");
+  $("#settings-form").elements.phone_token.placeholder = s.phone_connected ? "A token is saved - leave empty to keep it" : "Paste the token from BotFather";
 }
 
 function showBrainFields() {
@@ -740,6 +750,12 @@ $("#open-settings").addEventListener("click", async () => { await loadSettings()
 $("#settings-save").addEventListener("click", saveSettings);
 $("#settings-form").elements.brain.addEventListener("change", showBrainFields);
 $("#ai-list").addEventListener("click", listModels);
+$("#phone-save").addEventListener("click", async () => {
+  const token = $("#settings-form").elements.phone_token.value.trim();
+  if (!token) return;
+  try { state.settings = await api("/api/settings", "PATCH", { phone_token: token }); $("#settings-form").elements.phone_token.value = ""; showPhone(); showSettingsError(""); } catch (error) { showSettingsError(error.message); }
+});
+$("#phone-test").addEventListener("click", () => api("/api/phone/test", "POST").then(() => toast("Sent. Check your phone.", "info", "Phone")).catch((error) => showSettingsError(error.message)));
 $("#ext-folder").addEventListener("click", () => api("/api/extension/folder", "POST").then((r) => toast(r.folder, "info", "Extension folder")).catch((error) => showSettingsError(error.message)));
 $("#email-test").addEventListener("click", async () => {
   const form = $("#settings-form");

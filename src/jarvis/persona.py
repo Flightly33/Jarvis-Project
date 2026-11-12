@@ -124,6 +124,7 @@ def context_block(source: str, *, recap: str = "", now: datetime | None = None) 
         "voice": "spoken (your reply will be read aloud)",
         "voice-followup": "spoken (follow-up, no wake word; your reply will be read aloud)",
         "text": "typed",
+        "phone": "sent from the user's phone, away from the computer (reply in short plain text, no markdown)",
         "system": "an automatic event, not the user speaking (reply as a brief spoken update)",
     }.get(source, source)
     lines = [f"Local time: {now.strftime('%A %Y-%m-%d %H:%M')} ({now.tzname() or 'local'})", f"Request: {how}"]

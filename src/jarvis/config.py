@@ -130,6 +130,12 @@ class EmailConfig(_Section):
     imap_port: int = Field(default=993, ge=1, le=65535)
 
 
+class PhoneConfig(_Section):
+    telegram_chat_id: int = Field(default=0, description="The one Telegram chat Jarvis obeys. Set by pairing.")
+    notify: bool = Field(default=True, description="Send reminders and calendar alerts to the phone.")
+    calendar_lead_minutes: int = Field(default=15, ge=0, le=720)
+
+
 class ServerConfig(_Section):
     host: str = "127.0.0.1"
     port: int = Field(default=8765, ge=1, le=65535)
@@ -156,6 +162,7 @@ class Config(_Section):
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     desktop: DesktopConfig = Field(default_factory=DesktopConfig)
     email: EmailConfig = Field(default_factory=EmailConfig)
+    phone: PhoneConfig = Field(default_factory=PhoneConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
 
 

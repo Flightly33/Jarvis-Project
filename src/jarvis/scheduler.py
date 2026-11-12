@@ -16,6 +16,8 @@ class ReminderScheduler:
         self._bus = bus
         self._poll = poll_seconds
         self._task: asyncio.Task | None = None
+        self._announced: set[int] = set()
+        self.calendar_lead_minutes = 15
 
     def start(self) -> None:
         if self._task is None:
@@ -41,4 +43,12 @@ class ReminderScheduler:
             if self._store.set_reminder_status(reminder.id, "fired"):     # guards against announcing twice
                 fired.append(reminder)
                 self._bus.emit("reminder", id=reminder.id, text=reminder.text, due_at=reminder.due_at, late=now - reminder.due_at > 120)
+        # calendar events that are about to start are announced once, like reminders
+        if self.calendar_lead_minutes:
+            for event in self._store.events(now, now + self.calendar_lead_minutes * 60):
+                if event["all_day"] or event["id"] in self._announced:
+                    continue
+                self._announced.add(event["id"])
+                clock = time.strftime("%H:%M", time.localtime(event["start"]))
+                self._bus.emit("reminder", id=-event["id"], text=f"{event['title']} starts at {clock}", due_at=event["start"], late=False)
         return fired

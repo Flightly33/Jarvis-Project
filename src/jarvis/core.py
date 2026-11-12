@@ -47,6 +47,10 @@ class JarvisCore:
         self.estop.register("assistant", self.assistant.interrupt)
         self.estop.register("background commands", lambda reason: self.services.jobs.stop_all())
         self.scheduler = ReminderScheduler(self.store, self.bus)
+        self.scheduler.calendar_lead_minutes = self.config.phone.calendar_lead_minutes
+        from jarvis.phone import PhoneLink
+
+        self.phone = PhoneLink(self)
         self._started = False
 
     def _system_prompt(self) -> str:
@@ -77,6 +81,7 @@ class JarvisCore:
         self.bus.bind_loop(asyncio.get_running_loop())
         await self.backend.start()
         self.scheduler.start()
+        await self.phone.start()
 
     async def switch_backend(self, name: str) -> None:
         """Change which AI service does the thinking, without restarting Jarvis."""
@@ -124,6 +129,7 @@ class JarvisCore:
 
     async def close(self) -> None:
         await self.scheduler.stop()
+        await self.phone.stop()
         from jarvis.tools.browser import close_browser
 
         await close_browser()
