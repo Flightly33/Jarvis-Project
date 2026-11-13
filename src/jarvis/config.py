@@ -130,6 +130,10 @@ class EmailConfig(_Section):
     imap_port: int = Field(default=993, ge=1, le=65535)
 
 
+class NotesConfig(_Section):
+    vault: str = Field(default="", description="Folder of the Obsidian vault Jarvis uses as its long-term brain. Empty for none.")
+
+
 class PhoneConfig(_Section):
     telegram_chat_id: int = Field(default=0, description="The one Telegram chat Jarvis obeys. Set by pairing.")
     notify: bool = Field(default=True, description="Send reminders and calendar alerts to the phone.")
@@ -164,6 +168,7 @@ class Config(_Section):
     desktop: DesktopConfig = Field(default_factory=DesktopConfig)
     email: EmailConfig = Field(default_factory=EmailConfig)
     phone: PhoneConfig = Field(default_factory=PhoneConfig)
+    notes: NotesConfig = Field(default_factory=NotesConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
 
 

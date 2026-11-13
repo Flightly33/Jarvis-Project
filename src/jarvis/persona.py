@@ -97,6 +97,17 @@ not addressed to you, reply with exactly {IGNORE_SENTINEL} and nothing else.
 """
 
 
+_VAULT_RULE = """
+# Your long-term brain
+You have an Obsidian vault at {vault}: a folder of Markdown notes that is your long-term memory and that the user \
+also reads and edits. Before saying you do not know something about the user's projects, classes, plans or people, \
+search it with vault_search and read what you find. When you learn something worth keeping beyond this conversation \
+- a decision, a plan, how something is set up, what was done and why - save it with vault_write: one topic per note, \
+a plain descriptive name, [[links]] to related notes and a few #tags. Add to an existing note rather than making a \
+near-duplicate. Short one-line facts still go through the remember tool. Do not store passwords or keys there.
+"""
+
+
 def build_system_prompt(config: Config, sandbox: PathSandbox, store: Store) -> str:
     user = config.user
     user_line = user.name or "the user"
@@ -114,7 +125,7 @@ def build_system_prompt(config: Config, sandbox: PathSandbox, store: Store) -> s
         os_detail=f"{platform.system()} {platform.release()}, {platform.machine()}",
         folders=sandbox.describe(),
         memories=memories,
-    )
+    ) + (_VAULT_RULE.format(vault=config.notes.vault) if config.notes.vault.strip() else "")
 
 
 def context_block(source: str, *, recap: str = "", now: datetime | None = None) -> str:

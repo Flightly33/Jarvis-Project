@@ -749,3 +749,37 @@ def test_screen_positions_map_from_the_screenshot_to_the_real_desktop():
     for bad in ("Hyper+A", "+", "Control+Nope"):
         with pytest.raises(ToolError):
             dc.parse_combo(bad)
+
+
+async def test_obsidian_vault_is_searched_read_and_written_and_stays_inside(executor, turn, home):
+    from jarvis.tools.vault import prepare_vault
+
+    out, _ = await call(executor, turn, "vault_search", query="robotics")
+    assert out.is_error and "Settings > Obsidian brain" in out.text
+    with pytest.raises(ValueError):
+        prepare_vault(str(home))                                   # not the whole user folder
+    vault = prepare_vault(str(home / "Brain"))
+    executor.services.config.notes.vault = str(vault)
+    assert (vault / "Jarvis" / "Home.md").is_file()
+    (vault / "School").mkdir()
+    (vault / "School" / "Robotics.md").write_text("# Robotics\nTournament is on Saturday at 8am. Bring the [[Battery charger]].\n", encoding="utf-8")
+    (vault / ".obsidian").mkdir()
+    (vault / ".obsidian" / "app.md").write_text("robotics settings", encoding="utf-8")
+
+    out, data = await call(executor, turn, "vault_search", query="robotics tournament")
+    assert [n["note"] for n in data["notes"]] == ["School/Robotics.md"] and "Saturday" in data["notes"][0]["excerpt"]
+    out, _ = await call(executor, turn, "vault_read", note="[[Robotics]]")           # found by name alone, as Obsidian links work
+    assert "Battery charger" in out.text and not turn.flags.tainted
+    out, data = await call(executor, turn, "vault_write", note="School/Robotics", content="- Team meets Thursday. #robotics")
+    assert data["result"] == "added to" and (vault / "School" / "Robotics.md").read_text(encoding="utf-8").endswith("8am. Bring the [[Battery charger]].\n- Team meets Thursday. #robotics\n")
+    out, data = await call(executor, turn, "vault_write", note="Projects/Jarvis ideas", content="# Jarvis ideas\nSee [[Robotics]].")
+    assert data["result"] == "created" and (vault / "Projects" / "Jarvis ideas.md").is_file()
+    async with answering(executor.services, False) as asked:                          # rewriting an existing note asks
+        out, _ = await call(executor, turn, "vault_write", note="School/Robotics", content="gone", mode="replace")
+    assert out.is_error and len(asked) == 1 and "Tournament" in (vault / "School" / "Robotics.md").read_text(encoding="utf-8")
+    for bad in ("../outside", ".obsidian/app", "School/../../x"):
+        out, _ = await call(executor, turn, "vault_write", note=bad, content="x")
+        assert out.is_error, bad
+    assert not (home / "outside.md").exists()
+    out, _ = await call(executor, turn, "remember", content="Robotics coach is Mr Lee", category="school")
+    assert "#school Robotics coach is Mr Lee" in (vault / "Jarvis" / "Memory.md").read_text(encoding="utf-8")

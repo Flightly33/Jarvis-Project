@@ -78,6 +78,7 @@ file: the interface, approvals and voice all work, with canned replies instead o
 | A browser Jarvis drives itself (open, read, click, type; never password fields) | Tested with a real browser on Linux and in the Windows build |
 | Jarvis Bridge extension: list, open, read, switch, group and close tabs in your own Chrome or Edge, open new windows, and click, type or press keys on pages with real input (asks first; never password fields) | Tested end to end with the real extension in Chromium on Linux; **not yet tried in your own browser or on sites like Gmail** |
 | Phone: chat, approvals, reminders and calendar alerts through a private Telegram bot | Tested against a simulated Telegram; **not yet run against the real service** |
+| Obsidian brain: Jarvis searches, reads and writes notes in an Obsidian vault as its long-term memory | Tested on a test vault; **not yet tried with a real vault or the Obsidian app** |
 | Phone calls and text messages to your number | Not built: they need a paid telephone service |
 | Sending email; Google Calendar, Drive, Outlook, school systems, GitHub | Not built yet |
 | Pasting text or a file into another application's window (Windows; always asks first; never command-line windows) | Tested by pasting into Notepad in the Windows build; **not yet tried with other apps** |

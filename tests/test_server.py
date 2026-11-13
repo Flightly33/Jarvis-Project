@@ -264,3 +264,13 @@ def test_browser_extension_pairs_and_serves_tab_requests(client, core):
         ws.send_json({"type": "ping"})
         assert client.get("/api/settings").json()["extension_connected"] is True
     assert client.get("/api/settings").json()["extension_connected"] is False
+
+
+def test_obsidian_vault_can_be_connected_from_settings(client, core, home):
+    vault = home / "Notes" / "Jarvis Brain"
+    settings = client.patch("/api/settings", json={"vault": str(vault)}).json()
+    assert settings["vault"] == str(vault) and (vault / "Jarvis" / "Home.md").is_file()
+    assert "Obsidian vault" in core._system_prompt() and str(vault) in core._system_prompt()
+    assert client.patch("/api/settings", json={"vault": "relative/folder"}).status_code == 422
+    assert client.patch("/api/settings", json={"vault": ""}).json()["vault"] == ""
+    assert "Obsidian vault" not in core._system_prompt()

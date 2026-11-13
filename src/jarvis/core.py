@@ -119,7 +119,7 @@ class JarvisCore:
             for key, value in values.items():
                 if getattr(target, key) != value:
                     setattr(target, key, value)          # validated on assignment by the config model
-                    persona_changed |= section in {"user", "claude", "openai"} or key in {"approved_dirs", "read_only_dirs"}
+                    persona_changed |= section in {"user", "claude", "openai", "notes"} or key in {"approved_dirs", "read_only_dirs"}
         save_config(self.paths, self.config)
         self.services.refresh()
         self.awake.set(self.config.phone.keep_awake)

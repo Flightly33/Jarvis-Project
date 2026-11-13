@@ -608,7 +608,7 @@ function showSettingsError(message) {
 async function saveSettings() {
   const form = $("#settings-form");
   const body = {};
-  for (const name of ["name", "honorific", "autonomy", "wake_word", "wake_sensitivity", "email_address", "email_host"]) body[name] = form.elements[name].value;
+  for (const name of ["name", "honorific", "autonomy", "wake_word", "wake_sensitivity", "email_address", "email_host", "vault"]) body[name] = form.elements[name].value;
   if (form.elements.email_password.value.trim()) body.email_password = form.elements.email_password.value.trim();
   const choice = form.elements.brain.value;
   if (choice === "claude") { body.model = form.elements.model.value; body.effort = form.elements.effort.value; }

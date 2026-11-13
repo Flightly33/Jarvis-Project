@@ -25,6 +25,7 @@ from jarvis.tools.reminders import REMINDER_TOOLS
 from jarvis.tools.shell import SHELL_TOOLS, JobManager
 from jarvis.tools.system import SYSTEM_TOOLS
 from jarvis.tools.tabs import TAB_TOOLS
+from jarvis.tools.vault import VAULT_TOOLS
 from jarvis.tools.web import WEB_TOOLS
 
 if sys.platform == "win32":
@@ -39,7 +40,7 @@ else:
 
 def build_registry(include_web: bool = False) -> ToolRegistry:
     """The standard tool set. `include_web` adds Jarvis's own web tools for backends without built-in ones."""
-    tools = [*FILE_TOOLS, *SHELL_TOOLS, *APP_TOOLS, *SYSTEM_TOOLS, *MEMORY_TOOLS, *REMINDER_TOOLS, *CALENDAR_TOOLS, *BROWSER_TOOLS, *EMAIL_TOOLS, *TAB_TOOLS, *PHONE_TOOLS, *IMAGE_TOOLS]
+    tools = [*FILE_TOOLS, *SHELL_TOOLS, *APP_TOOLS, *SYSTEM_TOOLS, *MEMORY_TOOLS, *REMINDER_TOOLS, *CALENDAR_TOOLS, *BROWSER_TOOLS, *EMAIL_TOOLS, *TAB_TOOLS, *PHONE_TOOLS, *IMAGE_TOOLS, *VAULT_TOOLS]
     if include_web:
         tools += WEB_TOOLS
     return ToolRegistry(tools)

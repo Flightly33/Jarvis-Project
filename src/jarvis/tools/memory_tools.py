@@ -22,6 +22,9 @@ async def _run_remember(a: RememberInput, ctx: ToolContext) -> ToolResult:
         memory = ctx.store.remember(a.content, a.category)
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
+    from jarvis.tools.vault import append_memory
+
+    append_memory(ctx, a.content, a.category)
     return ToolResult({"saved": memory.public()}, "noted")
 
 

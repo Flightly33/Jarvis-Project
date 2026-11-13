@@ -102,6 +102,7 @@ class SettingsBody(_Body):
     email_password: str | None = Field(default=None, max_length=200)      # write-only
     phone_token: str | None = Field(default=None, max_length=200)         # write-only
     keep_awake: bool | None = None
+    vault: str | None = Field(default=None, max_length=400)
 
 
 _SETTING_MAP = {
@@ -229,6 +230,7 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
             "ai_key_saved": bool(cfg.openai.api_key_env and get_secret(core.paths, cfg.openai.api_key_env)),
             "email_address": cfg.email.address, "email_host": cfg.email.imap_host,
             "email_connected": bool(cfg.email.address and get_secret(core.paths, "JARVIS_EMAIL_PASSWORD")),
+            "vault": cfg.notes.vault,
             **core.phone.snapshot(), "keep_awake": cfg.phone.keep_awake, "keep_awake_supported": core.awake.supported,
             "extension_key": extension_key(), "extension_connected": bridge.connected, "extension_folder": str(EXTENSION),
             "ai_presets": {name: {"label": p["label"], "keys_page": p["keys_page"], "needs_key": bool(p["api_key_env"])} for name, p in PRESETS.items()},
@@ -339,6 +341,16 @@ def create_app(core: JarvisCore, voice: Any = None, *, token: str, port: int, ex
         mail = {k: v.strip() for k, v in (("address", body.email_address), ("imap_host", body.email_host)) if v is not None}
         if mail:
             changes["email"] = mail
+        if body.vault is not None:
+            from jarvis.tools.vault import prepare_vault
+
+            folder = body.vault.strip()
+            if folder:
+                try:
+                    folder = str(prepare_vault(folder))
+                except (ValueError, OSError) as exc:
+                    raise HTTPException(422, f"That vault folder cannot be used: {exc}") from exc
+            changes["notes"] = {"vault": folder}
         if body.keep_awake is not None:
             changes["phone"] = {"keep_awake": body.keep_awake}
         if body.phone_token:
