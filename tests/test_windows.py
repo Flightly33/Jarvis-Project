@@ -233,7 +233,7 @@ def test_real_mouse_and_keyboard_reach_a_real_window():
         dc.press(dc.parse_combo("Control+A"))
         dc.press(dc.parse_combo("Control+C"))
         time.sleep(0.5)
-        copied = wi._powershell("Get-Clipboard -Raw")
+        copied = wi._powershell("[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Raw")
         assert "start typed by Jarvis: caf\u00e9" in copied and "100%" in copied
     finally:
         subprocess.run(["taskkill", "/F", "/IM", "notepad.exe", "/T"], capture_output=True, check=False)  # noqa: S603, S607
