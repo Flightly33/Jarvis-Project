@@ -73,7 +73,72 @@ async function inPage(tab, func, args) {
   return { tab_id: tab.id, ...frame.result };
 }
 
-// The three functions below run inside the web page. Each must be self-contained.
+// Real keyboard and mouse input through the browser's debugging interface, for pages (Google Docs, games,
+// many web apps) that ignore scripted clicks and typing. Chrome shows a notice while this is in use.
+async function realInput(tabId, work) {
+  const target = { tabId };
+  await chrome.debugger.attach(target, "1.3");
+  try {
+    await work((method, params) => chrome.debugger.sendCommand(target, method, params));
+  } finally {
+    try { await chrome.debugger.detach(target); } catch { /* the tab closed or navigated away */ }
+  }
+}
+
+const KEYS = {
+  enter: ["Enter", "Enter", 13, "\r"], tab: ["Tab", "Tab", 9], escape: ["Escape", "Escape", 27], backspace: ["Backspace", "Backspace", 8],
+  delete: ["Delete", "Delete", 46], space: [" ", "Space", 32, " "], home: ["Home", "Home", 36], end: ["End", "End", 35],
+  pageup: ["PageUp", "PageUp", 33], pagedown: ["PageDown", "PageDown", 34], arrowleft: ["ArrowLeft", "ArrowLeft", 37],
+  arrowup: ["ArrowUp", "ArrowUp", 38], arrowright: ["ArrowRight", "ArrowRight", 39], arrowdown: ["ArrowDown", "ArrowDown", 40],
+  period: [".", "Period", 190], comma: [",", "Comma", 188], slash: ["/", "Slash", 191], minus: ["-", "Minus", 189], equal: ["=", "Equal", 187],
+};
+
+async function pressKey(send, name, modifiers) {
+  let spec = KEYS[String(name).toLowerCase()];
+  if (!spec && /^[a-z]$/i.test(name)) spec = [modifiers & 8 ? name.toUpperCase() : name.toLowerCase(), "Key" + name.toUpperCase(), name.toUpperCase().charCodeAt(0)];
+  if (!spec && /^[0-9]$/.test(name)) spec = [name, "Digit" + name, name.charCodeAt(0)];
+  if (!spec && /^f([1-9]|1[0-2])$/i.test(name)) spec = [name.toUpperCase(), name.toUpperCase(), 111 + Number(name.slice(1))];
+  if (!spec) throw new Error(`Unknown key: ${name}`);
+  const [key, code, vk, text] = spec;
+  const base = { key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers };
+  const plain = !(modifiers & 7);           // with Ctrl/Alt/Meta held, a key is a shortcut, not a character
+  const char = text || (plain && key.length === 1 ? key : undefined);
+  await send("Input.dispatchKeyEvent", { type: char ? "keyDown" : "rawKeyDown", ...base, ...(char ? { text: char } : {}) });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+}
+
+// The functions below run inside the web page. Each must be self-contained.
+
+function locateControl(ref) {
+  const e = document.querySelector(`[data-jarvis-ref="${Number(ref)}"]`);
+  if (!e) return { error: "That control is no longer on the page. List the controls again." };
+  if ((e.getAttribute("type") || "").toLowerCase() === "password") return { error: "Jarvis does not touch password fields." };
+  e.scrollIntoView({ block: "center", inline: "center" });
+  const r = e.getBoundingClientRect();
+  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), url: location.href,
+           label: (e.getAttribute("aria-label") || e.innerText || e.value || "").trim().slice(0, 80) };
+}
+
+function focusControl(ref) {
+  const e = document.querySelector(`[data-jarvis-ref="${Number(ref)}"]`);
+  if (!e) return { error: "That field is no longer on the page. List the controls again." };
+  const type = (e.getAttribute("type") || "").toLowerCase();
+  if (type === "password" || (e.getAttribute("autocomplete") || "").includes("password")) return { error: "Jarvis does not type into password fields." };
+  if (e instanceof HTMLSelectElement) return { kind: "select", url: location.href };
+  if (!(e.isContentEditable || e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement)) return { error: "That control is not something text can be typed into." };
+  e.scrollIntoView({ block: "center" });
+  e.focus();
+  if (e.isContentEditable) document.execCommand("selectAll", false); else e.select();      // what is typed replaces what was there
+  return { kind: "text", url: location.href };
+}
+
+function cursorIsSafe() {
+  let e = document.activeElement;
+  while (e && e.shadowRoot && e.shadowRoot.activeElement) e = e.shadowRoot.activeElement;
+  const type = e ? (e.getAttribute("type") || "").toLowerCase() : "";
+  if (type === "password" || (e && (e.getAttribute("autocomplete") || "").includes("password"))) return { error: "The cursor is in a password field. Jarvis does not type there." };
+  return { ok: true };
+}
 
 function listControls(limit) {
   const visible = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 1 && r.height > 1 && s.visibility !== "hidden" && s.display !== "none"; };
@@ -157,7 +222,7 @@ async function handle(command, args) {
   }
   if (command === "open_tab") {
     if (!/^https?:\/\//.test(args.url || "")) throw new Error("Only http and https addresses can be opened.");
-    const tab = await chrome.tabs.create({ url: args.url, active: false });      // in the background: nothing is interrupted
+    const tab = await chrome.tabs.create({ url: args.url, active: false, ...(args.window_id ? { windowId: args.window_id } : {}) });      // in the background: nothing is interrupted
     await new Promise((resolve) => {
       const done = () => { chrome.tabs.onUpdated.removeListener(listener); clearTimeout(timer); resolve(); };
       const listener = (id, info) => { if (id === tab.id && info.status === "complete") done(); };
@@ -183,9 +248,68 @@ async function handle(command, args) {
     await loaded(tab.id);
     return describe(await chrome.tabs.get(tab.id));
   }
+  if (command === "open_window") {
+    const urls = (args.urls || []).filter((u) => /^https?:\/\//.test(u));
+    if (!urls.length) throw new Error("Give at least one http or https address.");
+    const win = await chrome.windows.create({ url: urls, focused: true });
+    await Promise.all(win.tabs.map((t) => loaded(t.id)));
+    return { window: win.id, tabs: (await chrome.tabs.query({ windowId: win.id })).map(describe) };
+  }
+  if (command === "group_tabs") {
+    const ids = args.tab_ids || [];
+    if (!ids.length) throw new Error("Give the tabs to group.");
+    const first = await chrome.tabs.get(ids[0]);
+    const existing = (await chrome.tabGroups.query({ windowId: first.windowId })).find((g) => (g.title || "").toLowerCase() === String(args.name || "").toLowerCase());
+    const groupId = await chrome.tabs.group(existing ? { tabIds: ids, groupId: existing.id } : { tabIds: ids, createProperties: { windowId: first.windowId } });
+    const colors = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];
+    await chrome.tabGroups.update(groupId, { title: args.name || "", ...(colors.includes(args.color) ? { color: args.color } : {}) });
+    return { group: args.name || "", window: first.windowId, tabs: (await chrome.tabs.query({ groupId })).map(describe) };
+  }
   if (command === "list_controls") return inPage(await pageTab(args.tab_id), listControls, [args.limit || 80]);
-  if (command === "click") return inPage(await pageTab(args.tab_id), clickControl, [args.ref]);
-  if (command === "type") return inPage(await pageTab(args.tab_id), typeIntoControl, [args.ref, args.text || "", Boolean(args.submit)]);
+  if (command === "click") {
+    const tab = await pageTab(args.tab_id);
+    const spot = await inPage(tab, locateControl, [args.ref]);
+    try {
+      await realInput(tab.id, async (send) => {
+        const at = { x: spot.x, y: spot.y, button: "left", clickCount: 1 };
+        await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: spot.x, y: spot.y });
+        await send("Input.dispatchMouseEvent", { type: "mousePressed", ...at });
+        await send("Input.dispatchMouseEvent", { type: "mouseReleased", ...at });
+      });
+      return { tab_id: tab.id, clicked: spot.label, url: spot.url, how: "real mouse click" };
+    } catch (error) {       // the debugger is unavailable (e.g. DevTools is open on that tab): fall back to a scripted click
+      return { ...(await inPage(tab, clickControl, [args.ref])), how: "scripted click" };
+    }
+  }
+  if (command === "type") {
+    const tab = await pageTab(args.tab_id);
+    const text = args.text || "";
+    const field = await inPage(tab, focusControl, [args.ref]);
+    if (field.kind === "select") return inPage(tab, typeIntoControl, [args.ref, text, false]);
+    try {
+      await realInput(tab.id, async (send) => {
+        await send("Input.insertText", { text });
+        if (args.submit) await pressKey(send, "Enter", 0);
+      });
+      return { tab_id: tab.id, typed: text.length, submitted: Boolean(args.submit), url: field.url, how: "real keyboard" };
+    } catch (error) {
+      return { ...(await inPage(tab, typeIntoControl, [args.ref, text, Boolean(args.submit)])), how: "scripted typing" };
+    }
+  }
+  if (command === "keys") {
+    const tab = await pageTab(args.tab_id);
+    await inPage(tab, cursorIsSafe, []);
+    await realInput(tab.id, async (send) => {
+      for (const combo of args.keys || []) {
+        const parts = String(combo).split("+").map((p) => p.trim()).filter(Boolean);
+        const key = parts.pop();
+        const modifiers = parts.reduce((m, p) => m | ({ alt: 1, control: 2, ctrl: 2, meta: 4, command: 4, shift: 8 }[p.toLowerCase()] || 0), 0);
+        await pressKey(send, key, modifiers);
+      }
+      if (args.text) await send("Input.insertText", { text: args.text });
+    });
+    return { tab_id: tab.id, pressed: (args.keys || []).length, typed: (args.text || "").length };
+  }
   throw new Error(`Unknown request: ${command}`);
 }
 

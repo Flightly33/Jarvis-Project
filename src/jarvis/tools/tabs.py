@@ -103,7 +103,9 @@ async def _run_read(a: TabReadInput, ctx: ToolContext) -> ToolResult:
 
 
 class TabOpenInput(ToolInput):
-    url: Trimmed = Field(description="An http(s) address to open as a new background tab in the user's own browser.")
+    url: Trimmed = Field(description="An http(s) address to open as a new background tab in the user's own browser. For Google sites, a particular "
+                         "signed-in account can be chosen by adding authuser=<email> to the address's query.")
+    window_id: int = Field(default=0, description="Open it in this window (a 'window' value from tabs_list or window_open). 0 uses the current window.")
 
 
 def _assess_open(a: TabOpenInput, ctx: ToolContext) -> Assessment:
@@ -115,8 +117,58 @@ def _assess_open(a: TabOpenInput, ctx: ToolContext) -> Assessment:
 
 
 async def _run_open(a: TabOpenInput, ctx: ToolContext) -> ToolResult:
-    tab = await bridge.call("open_tab", url=a.url)
+    tab = await bridge.call("open_tab", url=a.url, window_id=a.window_id)
     return ToolResult({"opened": tab, "next": "Use tab_read with this tab_id to read it."}, f"opened {urlsplit(a.url).netloc} in a background tab")
+
+
+class WindowOpenInput(ToolInput):
+    urls: list[Trimmed] = Field(min_length=1, max_length=12, description="The http(s) addresses to open, one tab each, in a new browser window.")
+
+
+def _assess_window(a: WindowOpenInput, ctx: ToolContext) -> Assessment:
+    base = Assessment(risk=Risk.LOW, title=f"Open a new browser window with {len(a.urls)} tab(s)", detail="\n".join(a.urls)[:600], sends_external=True, grant_key="browser")
+    if any(urlsplit(u).scheme not in {"http", "https"} or not urlsplit(u).netloc for u in a.urls):
+        base.blocked = "Only http and https addresses can be opened."
+    return base
+
+
+async def _run_window(a: WindowOpenInput, ctx: ToolContext) -> ToolResult:
+    opened = await bridge.call("open_window", timeout=75.0, urls=a.urls)
+    return ToolResult(opened, f"opened a new window with {len(opened.get('tabs', []))} tab(s)", untrusted_source="browser tab titles")
+
+
+class TabGroupInput(ToolInput):
+    tab_ids: list[int] = Field(min_length=1, max_length=50, description="Tab ids to put in the group (all should be in the same window).")
+    name: Trimmed = Field(min_length=1, max_length=40, description="The group's name. If a group with this name exists in that window, the tabs join it.")
+    color: Trimmed = Field(default="", description="Optional: grey, blue, red, yellow, green, pink, purple, cyan or orange.")
+
+
+def _assess_group(a: TabGroupInput, ctx: ToolContext) -> Assessment:
+    return Assessment(risk=Risk.LOW, title=f"Put {len(a.tab_ids)} tab(s) in the tab group '{a.name}'")
+
+
+async def _run_group(a: TabGroupInput, ctx: ToolContext) -> ToolResult:
+    grouped = await bridge.call("group_tabs", tab_ids=a.tab_ids, name=a.name, color=a.color.lower())
+    return ToolResult(grouped, f"grouped {len(grouped.get('tabs', []))} tab(s) as '{a.name}'", untrusted_source="browser tab titles")
+
+
+class TabKeysInput(ToolInput):
+    tab_id: int = Field(default=0, description="A tab id from tabs_list. 0 is the tab the user is currently on.")
+    keys: list[Trimmed] = Field(default_factory=list, max_length=30, description="Keys or shortcuts to press in order, e.g. 'Control+A', 'Control+Shift+Period', 'Enter', 'ArrowDown'.")
+    text: str = Field(default="", max_length=20_000, description="Text to type afterwards at the page's cursor, as a real keyboard would.")
+
+
+def _assess_keys(a: TabKeysInput, ctx: ToolContext) -> Assessment:
+    base = Assessment(risk=Risk.MODIFY, title="Press keys on a page in your browser", detail=(", ".join(a.keys) + "\n" + a.text[:400]).strip(),
+                      reasons=["You are signed in there, so this acts as you."], sends_external=True, grant_key="tab-act")
+    if not a.keys and not a.text:
+        base.blocked = "Give keys, text, or both."
+    return base
+
+
+async def _run_keys(a: TabKeysInput, ctx: ToolContext) -> ToolResult:
+    done = await bridge.call("keys", tab_id=a.tab_id, keys=a.keys, text=a.text)
+    return ToolResult({"keys_pressed": done.get("pressed", 0), "typed_characters": done.get("typed", 0)}, "pressed keys on the page")
 
 
 class TabIdInput(ToolInput):
@@ -230,6 +282,15 @@ TAB_TOOLS: list[Tool] = [
         "Open a web address as a new background tab in the user's own browser (it does not interrupt what they are "
         "doing), then read it with tab_read. Prefer this over open_url when you need to read the page.",
         TabOpenInput, _run_open, _assess_open, group="tabs",
+    ),
+    Tool("window_open", "Open a new window of the user's own browser with one tab per address given.", WindowOpenInput, _run_window, _assess_window, timeout=90, group="tabs"),
+    Tool("tab_group", "Put tabs of the user's own browser into a named tab group (created if it does not exist).", TabGroupInput, _run_group, _assess_group, group="tabs"),
+    Tool(
+        "tab_keys",
+        "Press keys or shortcuts and/or type text at the cursor of a tab in the user's own browser, as a real keyboard. Use it for editors "
+        "that have no listable field (Google Docs, Sheets, Slides: open docs.new, then type) and for keyboard shortcuts. The tab should be "
+        "in front (tab_switch) for editors to respond. Never passwords.",
+        TabKeysInput, _run_keys, _assess_keys, timeout=60, group="tabs",
     ),
     Tool("tab_switch", "Bring a tab in the user's own browser to the front.", TabIdInput, _run_switch, _assess_switch, group="tabs"),
     Tool("tab_close", "Close a tab in the user's own browser.", TabIdInput, _run_close, _assess_close, group="tabs"),

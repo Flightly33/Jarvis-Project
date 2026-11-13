@@ -234,9 +234,10 @@ class PhoneLink:
         approvals = self.core.services.approvals
         intent = local_intent(text)
         if approvals.pending() and intent in {"yes", "no", "confirm"}:
-            answered = approvals.resolve_latest(intent != "no", by="phone")
+            # a high-risk action needs the typed word "confirm": a casual or misheard "yes" is not enough
+            answered = approvals.resolve_latest(intent != "no", by="phone", allow_high_risk=intent == "confirm" and not spoken)
             if answered is None:
-                await self.send("That action is high risk, so it can only be approved at the computer. Reply no to decline it.")
+                await self.send("That action is high risk. Type confirm to approve it, or no to decline it.")
             return
         task = asyncio.create_task(self._turn(text, spoken))
         self._turns.add(task)
@@ -265,6 +266,9 @@ class PhoneLink:
                 elif event["type"] == "approval_request" and self._phone_turns:
                     request = event["request"]
                     high = request["risk"] == "high"
-                    await self.send(f"Approval needed: {request['title']}\n" + ("This is high risk and can only be approved at the computer. Reply no to decline." if high else "Reply yes or no."))
+                    detail = str(request.get("detail") or "").strip()
+                    why = "; ".join(str(r) for r in request.get("reasons") or [])
+                    await self.send(f"Approval needed: {request['title']}" + (f"\n{detail[:500]}" if detail else "") + (f"\nWhy it asks: {why[:300]}" if why else "")
+                                    + ("\nThis is high risk. Type confirm to approve it, or no to decline." if high else "\nReply yes or no."))
         finally:
             self.core.bus.unsubscribe(queue)

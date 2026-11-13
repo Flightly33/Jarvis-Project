@@ -123,14 +123,14 @@ async def test_approvals_from_the_phone(rig):
     telegram.say(222, "no")
     await until(lambda: any("declined" in t for _, t in telegram.sent))
     assert (workspace / "old.txt").exists()
-    # high-risk actions cannot be approved remotely
+    # a high-risk action needs the typed word "confirm"; "yes" is not enough
     request = asyncio.create_task(core.services.approvals.request(tool="t", title="erase", detail="", risk="high", reasons=[]))
     await asyncio.sleep(0.05)
     telegram.say(222, "yes")
-    await until(lambda: any("only be approved at the computer" in t for _, t in telegram.sent))
+    await until(lambda: any("Type confirm" in t for _, t in telegram.sent))
     assert not request.done()
-    core.services.approvals.decline_all()
-    await request
+    telegram.say(222, "confirm")
+    assert (await asyncio.wait_for(request, 5)).approved
 
 
 async def test_upcoming_calendar_events_are_announced_once(rig):

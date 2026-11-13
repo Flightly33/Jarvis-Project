@@ -76,7 +76,7 @@ file: the interface, approvals and voice all work, with canned replies instead o
 | Talk shortcut that works from any window (Ctrl+Alt+J on Windows) | Tested in code only; **not yet confirmed on a real PC** |
 | Reading email (read-only, with an app password) | Tested against a simulated mail server; **not yet run against real Gmail** |
 | A browser Jarvis drives itself (open, read, click, type; never password fields) | Tested with a real browser on Linux and in the Windows build |
-| Jarvis Bridge extension: list, open, read, switch and close tabs in your own Chrome or Edge, and click or type on pages (asks first; never password fields) | Tested end to end with the real extension in Chromium on Linux; **not yet tried in your own browser or on sites like Gmail** |
+| Jarvis Bridge extension: list, open, read, switch, group and close tabs in your own Chrome or Edge, open new windows, and click, type or press keys on pages with real input (asks first; never password fields) | Tested end to end with the real extension in Chromium on Linux; **not yet tried in your own browser or on sites like Gmail** |
 | Phone: chat, approvals, reminders and calendar alerts through a private Telegram bot | Tested against a simulated Telegram; **not yet run against the real service** |
 | Phone calls and text messages to your number | Not built: they need a paid telephone service |
 | Sending email; Google Calendar, Drive, Outlook, school systems, GitHub | Not built yet |

@@ -592,6 +592,9 @@ async def test_tab_tools_talk_to_the_extension(executor, turn):
                 "list_controls": {"tab_id": 5, "title": "Inbox", "url": "https://mail.google.com/", "more": False,
                                   "controls": [{"ref": 1, "kind": "button", "label": "Compose"}, {"ref": 2, "kind": "input:password", "label": "(password field)"}]},
                 "click": {"tab_id": 5, "clicked": "Compose", "url": "https://mail.google.com/"},
+                "open_window": {"window": 7, "tabs": [{"tab_id": 11, "title": "ChatGPT", "url": "https://chatgpt.com/", "window": 7}]},
+                "group_tabs": {"group": "Work", "window": 7, "tabs": [{"tab_id": 11, "title": "ChatGPT", "url": "https://chatgpt.com/"}]},
+                "keys": {"tab_id": 5, "pressed": 1, "typed": 7},
                 "type": {"tab_id": 5, "typed": 5, "submitted": True, "url": "https://mail.google.com/"},
             }
             ok = request["cmd"] != "read_tab" or request["args"]["tab_id"] != 404
@@ -623,6 +626,15 @@ async def test_tab_tools_talk_to_the_extension(executor, turn):
                 out, _ = await call(executor, turn, name, **args)
             assert not out.is_error and len(asked) == 1 and len(sent) == before + 1, name
         out, _ = await call(executor, turn, "tab_navigate", tab_id=5, url="file:///etc/passwd")
+        assert out.is_error
+        out, _ = await call(executor, turn, "tab_group", tab_ids=[11], name="Work", color="Blue")
+        assert not out.is_error and "ChatGPT" in out.text
+        out, _ = await call(executor, turn, "window_open", urls=["https://chatgpt.com/", "javascript:alert(1)"])
+        assert out.is_error
+        async with answering(executor.services, True) as asked:
+            out, _ = await call(executor, turn, "tab_keys", tab_id=5, keys=["Control+A"], text="Lock in")
+        assert not out.is_error and len(asked) == 1
+        out, _ = await call(executor, turn, "tab_keys", tab_id=5)
         assert out.is_error
     finally:
         bridge.detach(socket)
