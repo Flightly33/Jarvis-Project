@@ -29,9 +29,10 @@ from jarvis.tools.web import WEB_TOOLS
 
 if sys.platform == "win32":
     from jarvis.tools.apps_windows import APP_TOOLS as _APPS
+    from jarvis.tools.desktop_control import CONTROL_TOOLS
     from jarvis.tools.windows_input import WINDOW_TOOLS
 
-    APP_TOOLS = [*_APPS, *WINDOW_TOOLS]
+    APP_TOOLS = [*_APPS, *WINDOW_TOOLS, *CONTROL_TOOLS]
 else:
     from jarvis.tools.apps import APP_TOOLS
 

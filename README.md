@@ -82,7 +82,7 @@ file: the interface, approvals and voice all work, with canned replies instead o
 | Sending email; Google Calendar, Drive, Outlook, school systems, GitHub | Not built yet |
 | Pasting text or a file into another application's window (Windows; always asks first; never command-line windows) | Tested by pasting into Notepad in the Windows build; **not yet tried with other apps** |
 | Photos and files sent from your phone are saved for Jarvis to look at | Tested against a simulated Telegram |
-| Clicking inside other applications' windows | Not built yet |
+| Full desktop control on Windows: click, type, press shortcuts and scroll in any application, guided by screenshots (asks first; never command-line windows) | Real typing and pointer movement tested in the Windows build; **clicking by sight depends on the AI model and is not yet tried on a real desktop** |
 
 ## Phone
 

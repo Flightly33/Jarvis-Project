@@ -204,3 +204,37 @@ def test_text_is_pasted_into_a_real_window_and_terminals_are_refused():
     finally:
         subprocess.run(["taskkill", "/F", "/IM", "notepad.exe", "/T"], capture_output=True, check=False)  # noqa: S603, S607
         notepad.kill()
+
+
+@windows_only
+def test_real_mouse_and_keyboard_reach_a_real_window():
+    """Moves the real pointer and types into Notepad with the real keyboard path, then reads the text back."""
+    import subprocess
+    import time
+
+    from jarvis.tools import desktop_control as dc
+    from jarvis.tools import windows_input as wi
+
+    left, top, width, height = dc.screen_geometry()
+    assert width > 0 and height > 0
+    view = dc.View(left, top, width, height, 1000, 1000)
+    target = view.to_screen(500, 500)
+    dc._user32.SetCursorPos(*target)
+    assert dc.cursor() == target
+    notepad = subprocess.Popen(["notepad.exe"])  # noqa: S603, S607
+    try:
+        deadline = time.time() + 30
+        while not any("notepad" in w["program"].lower() for w in wi.list_windows()):
+            assert time.time() < deadline
+            time.sleep(1)
+        wi.paste_into_window("notepad", text="start ")              # brings Notepad to the front
+        assert dc.foreground_program() == "notepad"
+        dc.type_text("typed by Jarvis: caf\u00e9 \U0001F600 100%")
+        dc.press(dc.parse_combo("Control+A"))
+        dc.press(dc.parse_combo("Control+C"))
+        time.sleep(0.5)
+        copied = wi._powershell("Get-Clipboard -Raw")
+        assert "start typed by Jarvis: caf\u00e9" in copied and "100%" in copied
+    finally:
+        subprocess.run(["taskkill", "/F", "/IM", "notepad.exe", "/T"], capture_output=True, check=False)  # noqa: S603, S607
+        notepad.kill()

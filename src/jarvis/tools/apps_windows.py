@@ -202,7 +202,11 @@ async def _run_screenshot(a: ScreenshotInput, ctx: ToolContext) -> ToolResult:
     except Exception as exc:  # noqa: BLE001 - no desktop session, locked screen...
         raise ToolError(f"Could not take a screenshot: {exc}") from exc
     data, mime, size = await asyncio.to_thread(_shrink, path)
-    return ToolResult({"saved_to": str(path), "width": size[0], "height": size[1]}, "screenshot taken", images=[ImagePart(mime, data)])
+    from jarvis.tools import desktop_control
+
+    desktop_control.view = desktop_control.View(*desktop_control.screen_geometry(), size[0], size[1])     # so clicks can be placed from this picture
+    return ToolResult({"saved_to": str(path), "width": size[0], "height": size[1], "note": "Positions for screen_click are pixels in this picture."},
+                      "screenshot taken", images=[ImagePart(mime, data)])
 
 
 APP_TOOLS: list[Tool] = [

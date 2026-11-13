@@ -734,3 +734,18 @@ def test_window_paste_reports_refusals_and_never_runs_text_as_code(monkeypatch):
         seen["answer"] = answer
         with pytest.raises(ToolError, match=words):
             wi.paste_into_window("x", text="hi")
+
+
+def test_screen_positions_map_from_the_screenshot_to_the_real_desktop():
+    from jarvis.tools import desktop_control as dc
+    from jarvis.tools.base import ToolError
+
+    view = dc.View(left=-1920, top=0, width=3840, height=1080, shot_width=1568, shot_height=441)     # two monitors, the left one first
+    assert view.to_screen(0, 0) == (-1919, 1) and view.to_screen(1567, 440) == (1919, 1079)
+    assert view.to_screen(784, 220) == (1, 540)
+    with pytest.raises(ToolError, match="outside the screenshot"):
+        view.to_screen(1568, 10)
+    assert dc.parse_combo("Control+Shift+s") == [0x11, 0x10, ord("S")] and dc.parse_combo("F5") == [0x74] and dc.parse_combo("Win") == [0x5B]
+    for bad in ("Hyper+A", "+", "Control+Nope"):
+        with pytest.raises(ToolError):
+            dc.parse_combo(bad)
